@@ -1,0 +1,74 @@
+.cv-copyable {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.cv-copyable__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-copyable--field {
+  gap: 4px;
+  height: 24px;
+  padding: 0 2px 0 8px;
+  border-radius: var(--cv-radius-lg);
+  background: var(--cv-bg-interactive);
+  color: var(--cv-text-default);
+  font-family: var(--cv-font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cv-copyable--field .cv-copy-button {
+  --cv-icon-size: 14px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--cv-radius-md);
+}
+
+.cv-copyable--inline {
+  gap: 6px;
+  height: 24px;
+  margin: 0 2px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--cv-radius-lg);
+  background: var(--cv-bg-interactive-hover);
+  color: var(--cv-text-emphasis);
+  font: inherit;
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow var(--cv-duration) var(--cv-ease);
+}
+
+.cv-copyable--scroll .cv-copyable__text {
+  overflow-x: auto;
+  text-overflow: clip;
+  scrollbar-width: thin;
+}
+
+.cv-copyable--scroll .cv-copyable__text:focus-visible {
+  outline: 2px solid var(--cv-ring-focus);
+  outline-offset: -2px;
+}
+
+.cv-copyable--inline[data-focus-visible] {
+  box-shadow: 0 0 0 2px var(--cv-ring-focus);
+}
+
+.cv-copyable__icon {
+  display: inline-flex;
+  color: var(--cv-text-default);
+}
+
+.cv-copyable__icon svg {
+  width: 14px;
+  height: 14px;
+}

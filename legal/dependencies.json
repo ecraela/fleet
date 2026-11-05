@@ -1,0 +1,938 @@
+{
+  "components": [
+    {
+      "ecosystem": "npm",
+      "license": "OFL-1.1",
+      "name": "@fontsource-variable/geist",
+      "notices": [
+        {
+          "file": "notices/71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f.txt",
+          "sha256": "71609cbb5c78b5870d712eab73a31d76622635c6ed034ab5cee3b9ecbda8685f",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@fontsource-variable/geist/-/geist-5.3.0.tgz",
+      "version": "5.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "OFL-1.1",
+      "name": "@fontsource-variable/inter",
+      "notices": [
+        {
+          "file": "notices/3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345.txt",
+          "sha256": "3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@fontsource-variable/inter/-/inter-5.3.0.tgz",
+      "version": "5.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "OFL-1.1",
+      "name": "@fontsource/commit-mono",
+      "notices": [
+        {
+          "file": "notices/2e2dc937707819086e7631d02e6183fbe52316a89da0a611d9b09d3be7d4bd72.txt",
+          "sha256": "2e2dc937707819086e7631d02e6183fbe52316a89da0a611d9b09d3be7d4bd72",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@fontsource/commit-mono/-/commit-mono-5.3.0.tgz",
+      "version": "5.3.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "@internationalized/date",
+      "notices": [
+        {
+          "file": "notices/7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84.txt",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@internationalized/date/-/date-3.12.4.tgz",
+      "version": "3.12.4"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "@internationalized/number",
+      "notices": [
+        {
+          "file": "notices/7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84.txt",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@internationalized/number/-/number-3.6.9.tgz",
+      "version": "3.6.9"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "@internationalized/string",
+      "notices": [
+        {
+          "file": "notices/7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84.txt",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@internationalized/string/-/string-3.2.10.tgz",
+      "version": "3.2.10"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "@medusajs/icons",
+      "notices": [
+        {
+          "file": "notices/e2058c0858b14c1813ee09ea991d97f6aa153fcd60eeb7174d736c19bbbef06d.txt",
+          "sha256": "e2058c0858b14c1813ee09ea991d97f6aa153fcd60eeb7174d736c19bbbef06d",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@medusajs/icons/-/icons-2.21.2.tgz",
+      "version": "2.21.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "@react-types/shared",
+      "notices": [
+        {
+          "file": "notices/7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84.txt",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@react-types/shared/-/shared-3.37.0.tgz",
+      "version": "3.37.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "@swc/helpers",
+      "notices": [
+        {
+          "file": "notices/d96eba1f1881334d50ffc144276dfa98e147a415e7c591ecdfcb81680361dc91.txt",
+          "sha256": "d96eba1f1881334d50ffc144276dfa98e147a415e7c591ecdfcb81680361dc91",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/@swc/helpers/-/helpers-0.5.23.tgz",
+      "version": "0.5.23"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "aria-hidden",
+      "notices": [
+        {
+          "file": "notices/30f0cfddf483d1128e3610205020f2041a6c5e837aa999e0aa82e5576187d4a9.txt",
+          "sha256": "30f0cfddf483d1128e3610205020f2041a6c5e837aa999e0aa82e5576187d4a9",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/aria-hidden/-/aria-hidden-1.2.6.tgz",
+      "version": "1.2.6"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "client-only",
+      "notices": [
+        {
+          "file": "notices/da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93.txt",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/client-only/-/client-only-0.0.1.tgz",
+      "version": "0.0.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "clsx",
+      "notices": [
+        {
+          "file": "notices/9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97.txt",
+          "sha256": "9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97",
+          "upstream_path": "license"
+        }
+      ],
+      "source": "https://registry.npmjs.org/clsx/-/clsx-2.1.1.tgz",
+      "version": "2.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "cookie",
+      "notices": [
+        {
+          "file": "notices/c02110eedc16c7114f1a9bdc026c65626ce1d9c7e27fd51a8e0feee8a48a6858.txt",
+          "sha256": "c02110eedc16c7114f1a9bdc026c65626ce1d9c7e27fd51a8e0feee8a48a6858",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/cookie/-/cookie-1.1.1.tgz",
+      "version": "1.1.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "react-aria-components",
+      "notices": [
+        {
+          "file": "notices/7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84.txt",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/react-aria-components/-/react-aria-components-1.20.0.tgz",
+      "version": "1.20.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "react-aria",
+      "notices": [
+        {
+          "file": "notices/7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84.txt",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/react-aria/-/react-aria-3.51.0.tgz",
+      "version": "3.51.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "react-dom",
+      "notices": [
+        {
+          "file": "notices/da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93.txt",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/react-dom/-/react-dom-19.2.8.tgz",
+      "version": "19.2.8"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "react-router-dom",
+      "notices": [
+        {
+          "file": "notices/77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49.txt",
+          "sha256": "77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49",
+          "upstream_path": "LICENSE.md"
+        }
+      ],
+      "source": "https://registry.npmjs.org/react-router-dom/-/react-router-dom-7.18.3.tgz",
+      "version": "7.18.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "react-router",
+      "notices": [
+        {
+          "file": "notices/77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49.txt",
+          "sha256": "77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49",
+          "upstream_path": "LICENSE.md"
+        }
+      ],
+      "source": "https://registry.npmjs.org/react-router/-/react-router-7.18.3.tgz",
+      "version": "7.18.3"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "Apache-2.0",
+      "name": "react-stately",
+      "notices": [
+        {
+          "file": "notices/7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84.txt",
+          "sha256": "7dfe6526888bac51759c99f9a51262ba2711a8c12a067f2181609dd9a4066b84",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/react-stately/-/react-stately-3.49.0.tgz",
+      "version": "3.49.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "react",
+      "notices": [
+        {
+          "file": "notices/da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93.txt",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/react/-/react-19.2.8.tgz",
+      "version": "19.2.8"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "scheduler",
+      "notices": [
+        {
+          "file": "notices/da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93.txt",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/scheduler/-/scheduler-0.27.0.tgz",
+      "version": "0.27.0"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "set-cookie-parser",
+      "notices": [
+        {
+          "file": "notices/c5c6c5183a789d122f267c405f685037efb87e27fcde28ab1dd7378a2d2f5962.txt",
+          "sha256": "c5c6c5183a789d122f267c405f685037efb87e27fcde28ab1dd7378a2d2f5962",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/set-cookie-parser/-/set-cookie-parser-2.7.2.tgz",
+      "version": "2.7.2"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "0BSD",
+      "name": "tslib",
+      "notices": [
+        {
+          "file": "notices/210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751.txt",
+          "sha256": "210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751",
+          "upstream_path": "LICENSE.txt"
+        }
+      ],
+      "source": "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz",
+      "version": "2.8.1"
+    },
+    {
+      "ecosystem": "npm",
+      "license": "MIT",
+      "name": "use-sync-external-store",
+      "notices": [
+        {
+          "file": "notices/da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93.txt",
+          "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://registry.npmjs.org/use-sync-external-store/-/use-sync-external-store-1.7.0.tgz",
+      "version": "1.7.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "MIT",
+      "name": "github.com/cespare/xxhash/v2",
+      "notices": [
+        {
+          "file": "notices/f566a9f97bacdaf00d9f21dd991e81dc11201c4e016c86b470799429a1c9a79c.txt",
+          "sha256": "f566a9f97bacdaf00d9f21dd991e81dc11201c4e016c86b470799429a1c9a79c",
+          "upstream_path": "LICENSE.txt"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/cespare/xxhash/v2@v2.3.0",
+      "version": "v2.3.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "github.com/gogo/protobuf",
+      "notices": [
+        {
+          "file": "notices/3f571768c0ba2f330e5fee90de89bfe5141f48c1939be8008fa61461c30ca07f.txt",
+          "sha256": "3f571768c0ba2f330e5fee90de89bfe5141f48c1939be8008fa61461c30ca07f",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/gogo/protobuf@v1.3.2",
+      "version": "v1.3.2"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "github.com/golang/snappy",
+      "notices": [
+        {
+          "file": "notices/f69f157b0be75da373605dbc8bbf142e8924ee82d8f44f11bcaf351335bf98cf.txt",
+          "sha256": "f69f157b0be75da373605dbc8bbf142e8924ee82d8f44f11bcaf351335bf98cf",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/golang/snappy@v1.0.0",
+      "version": "v1.0.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "github.com/grafana/regexp",
+      "notices": [
+        {
+          "file": "notices/2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067.txt",
+          "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/grafana/regexp@v0.0.0-20250905093917-f7b3be9d1853",
+      "version": "v0.0.0-20250905093917-f7b3be9d1853"
+    },
+    {
+      "ecosystem": "go",
+      "license": "MIT",
+      "name": "github.com/jackc/pgpassfile",
+      "notices": [
+        {
+          "file": "notices/adb1663fda031df8f4344aa68f299fd87d80353e31339406742ded21dae65702.txt",
+          "sha256": "adb1663fda031df8f4344aa68f299fd87d80353e31339406742ded21dae65702",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/jackc/pgpassfile@v1.0.0",
+      "version": "v1.0.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "MIT",
+      "name": "github.com/jackc/pgservicefile",
+      "notices": [
+        {
+          "file": "notices/fc505773403fe869ed64cc2235cdd13988a427bb7e3a7e7004a3f4b27420f8fc.txt",
+          "sha256": "fc505773403fe869ed64cc2235cdd13988a427bb7e3a7e7004a3f4b27420f8fc",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/jackc/pgservicefile@v0.0.0-20240606120523-5a60cdf6a761",
+      "version": "v0.0.0-20240606120523-5a60cdf6a761"
+    },
+    {
+      "ecosystem": "go",
+      "license": "MIT",
+      "name": "github.com/jackc/pgx/v5",
+      "notices": [
+        {
+          "file": "notices/467f95e074fe23079a5623ed652619682692041b8551da27e3c2ddb9659a1507.txt",
+          "sha256": "467f95e074fe23079a5623ed652619682692041b8551da27e3c2ddb9659a1507",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/4b9071daf5f9975eb936c370200709bb7433862c5d4a32d21db65620133f4a8e.txt",
+          "sha256": "4b9071daf5f9975eb936c370200709bb7433862c5d4a32d21db65620133f4a8e",
+          "upstream_path": "pgproto3/notice_response.go"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/jackc/pgx/v5@v5.11.0",
+      "version": "v5.11.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "MIT",
+      "name": "github.com/jackc/puddle/v2",
+      "notices": [
+        {
+          "file": "notices/2d50e98a4900b4d6457a38d39c1432fdc156fc2f7b365f2e33ec9344acbb0057.txt",
+          "sha256": "2d50e98a4900b4d6457a38d39c1432fdc156fc2f7b365f2e33ec9344acbb0057",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/jackc/puddle/v2@v2.2.2",
+      "version": "v2.2.2"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "github.com/miekg/dns",
+      "notices": [
+        {
+          "file": "notices/66550c0ad5ca7ec1e08683e5f872cc45c741f311eee3b8ee484206ecbf9c740d.txt",
+          "sha256": "66550c0ad5ca7ec1e08683e5f872cc45c741f311eee3b8ee484206ecbf9c740d",
+          "upstream_path": "COPYRIGHT"
+        },
+        {
+          "file": "notices/f200ff9bad73385db2ed81e23ee2c1fe069eb5776e17fae4ee85ad0a9e1361a5.txt",
+          "sha256": "f200ff9bad73385db2ed81e23ee2c1fe069eb5776e17fae4ee85ad0a9e1361a5",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/miekg/dns@v1.1.73",
+      "version": "v1.1.73"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "github.com/munnerz/goautoneg",
+      "notices": [
+        {
+          "file": "notices/aa1376b9bc5dea6f30cdefde40c176a254f247d2814d0a9929395138631b2ae0.txt",
+          "sha256": "aa1376b9bc5dea6f30cdefde40c176a254f247d2814d0a9929395138631b2ae0",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/munnerz/goautoneg@v0.0.0-20191010083416-a7dc8b61c822",
+      "version": "v0.0.0-20191010083416-a7dc8b61c822"
+    },
+    {
+      "ecosystem": "go",
+      "license": "ISC",
+      "name": "github.com/oschwald/maxminddb-golang/v2",
+      "notices": [
+        {
+          "file": "notices/cb89cb8d744d4890187eb3e98fa36f644adf2e56866faba0af891f55493ac522.txt",
+          "sha256": "cb89cb8d744d4890187eb3e98fa36f644adf2e56866faba0af891f55493ac522",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/oschwald/maxminddb-golang/v2@v2.7.0",
+      "version": "v2.7.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "Apache-2.0",
+      "name": "github.com/prometheus/client_model",
+      "notices": [
+        {
+          "file": "notices/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/6c79faa15168885fb88a316ae0df18f486deafddefdc16826cdc56dfbd421e24.txt",
+          "sha256": "6c79faa15168885fb88a316ae0df18f486deafddefdc16826cdc56dfbd421e24",
+          "upstream_path": "NOTICE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/prometheus/client_model@v0.6.3",
+      "version": "v0.6.3"
+    },
+    {
+      "ecosystem": "go",
+      "license": "Apache-2.0",
+      "name": "github.com/prometheus/common",
+      "notices": [
+        {
+          "file": "notices/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/600244c8052c8c1d307043fafacbc83b429c171dd8e08f5a537c0a54014585ee.txt",
+          "sha256": "600244c8052c8c1d307043fafacbc83b429c171dd8e08f5a537c0a54014585ee",
+          "upstream_path": "NOTICE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/prometheus/common@v0.72.1",
+      "version": "v0.72.1"
+    },
+    {
+      "ecosystem": "go",
+      "license": "Apache-2.0",
+      "name": "github.com/prometheus/prometheus",
+      "notices": [
+        {
+          "file": "notices/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/ac9e304462a58a4d71b6488423d4447e614c8b31d517fe24345016522c102a78.txt",
+          "sha256": "ac9e304462a58a4d71b6488423d4447e614c8b31d517fe24345016522c102a78",
+          "upstream_path": "NOTICE"
+        }
+      ],
+      "source": "https://pkg.go.dev/github.com/prometheus/prometheus@v0.315.1",
+      "version": "v0.315.1"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "golang.org/x/crypto",
+      "notices": [
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "PATENTS"
+        }
+      ],
+      "source": "https://pkg.go.dev/golang.org/x/crypto@v0.58.0",
+      "version": "v0.58.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "golang.org/x/net",
+      "notices": [
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "PATENTS"
+        }
+      ],
+      "source": "https://pkg.go.dev/golang.org/x/net@v0.62.0",
+      "version": "v0.62.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "golang.org/x/sync",
+      "notices": [
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "PATENTS"
+        }
+      ],
+      "source": "https://pkg.go.dev/golang.org/x/sync@v0.24.0",
+      "version": "v0.24.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "golang.org/x/sys",
+      "notices": [
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "PATENTS"
+        }
+      ],
+      "source": "https://pkg.go.dev/golang.org/x/sys@v0.49.0",
+      "version": "v0.49.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "golang.org/x/text",
+      "notices": [
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "PATENTS"
+        }
+      ],
+      "source": "https://pkg.go.dev/golang.org/x/text@v0.43.0",
+      "version": "v0.43.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "Apache-2.0",
+      "name": "google.golang.org/genproto/googleapis/rpc",
+      "notices": [
+        {
+          "file": "notices/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "upstream_path": "LICENSE"
+        }
+      ],
+      "source": "https://pkg.go.dev/google.golang.org/genproto/googleapis/rpc@v0.0.0-20260825221802-da73d73af1c5",
+      "version": "v0.0.0-20260825221802-da73d73af1c5"
+    },
+    {
+      "ecosystem": "go",
+      "license": "Apache-2.0",
+      "name": "google.golang.org/grpc",
+      "notices": [
+        {
+          "file": "notices/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/693ff28ec216d5112ac1bbfe64ef539005867d1c7bd427b57d579683293b947f.txt",
+          "sha256": "693ff28ec216d5112ac1bbfe64ef539005867d1c7bd427b57d579683293b947f",
+          "upstream_path": "NOTICE.txt"
+        }
+      ],
+      "source": "https://pkg.go.dev/google.golang.org/grpc@v1.84.0",
+      "version": "v1.84.0"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "google.golang.org/protobuf",
+      "notices": [
+        {
+          "file": "notices/4835612df0098ca95f8e7d9e3bffcb02358d435dbb38057c844c99d7f725eb20.txt",
+          "sha256": "4835612df0098ca95f8e7d9e3bffcb02358d435dbb38057c844c99d7f725eb20",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "PATENTS"
+        }
+      ],
+      "source": "https://pkg.go.dev/google.golang.org/protobuf@v1.36.12",
+      "version": "v1.36.12"
+    },
+    {
+      "ecosystem": "go",
+      "license": "BSD-3-Clause",
+      "name": "Go runtime and standard library",
+      "notices": [
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/compile/internal/ssa/_gen/vendor/golang.org/x/tools/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/compile/internal/ssa/_gen/vendor/golang.org/x/tools/PATENTS"
+        },
+        {
+          "file": "notices/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "upstream_path": "src/cmd/vendor/github.com/google/pprof/LICENSE"
+        },
+        {
+          "file": "notices/154c946c17de61ca71d28e13673d76a5798e6e25995a7397fbae157afc8f62b4.txt",
+          "sha256": "154c946c17de61ca71d28e13673d76a5798e6e25995a7397fbae157afc8f62b4",
+          "upstream_path": "src/cmd/vendor/github.com/google/pprof/third_party/svgpan/LICENSE"
+        },
+        {
+          "file": "notices/b73277f7730993ef8e7f80aed83e5309762fed4d77eced982abb2c00657c074d.txt",
+          "sha256": "b73277f7730993ef8e7f80aed83e5309762fed4d77eced982abb2c00657c074d",
+          "upstream_path": "src/cmd/vendor/github.com/ianlancetaylor/demangle/LICENSE"
+        },
+        {
+          "file": "notices/8cda009bd927676a95ee7ce2dae921442ac4d9584d041b56ecfcba6839032f0b.txt",
+          "sha256": "8cda009bd927676a95ee7ce2dae921442ac4d9584d041b56ecfcba6839032f0b",
+          "upstream_path": "src/cmd/vendor/golang.org/x/arch/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/arch/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/vendor/golang.org/x/build/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/build/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/vendor/golang.org/x/mod/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/mod/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/vendor/golang.org/x/sync/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/sync/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/vendor/golang.org/x/sys/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/sys/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/vendor/golang.org/x/telemetry/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/telemetry/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/vendor/golang.org/x/term/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/term/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/vendor/golang.org/x/text/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/text/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/cmd/vendor/golang.org/x/tools/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/cmd/vendor/golang.org/x/tools/PATENTS"
+        },
+        {
+          "file": "notices/2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067.txt",
+          "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+          "upstream_path": "src/cmd/vendor/rsc.io/markdown/LICENSE"
+        },
+        {
+          "file": "notices/56210f826b8f0fbac3160dfe55c97f4019eb6cdda3963b5a0eab8a8bdb62360e.txt",
+          "sha256": "56210f826b8f0fbac3160dfe55c97f4019eb6cdda3963b5a0eab8a8bdb62360e",
+          "upstream_path": "src/crypto/internal/boring/LICENSE"
+        },
+        {
+          "file": "notices/d42b910fe44f043a907002751c5b29c7a17175e6c10ad8c3f5884387e7acab6d.txt",
+          "sha256": "d42b910fe44f043a907002751c5b29c7a17175e6c10ad8c3f5884387e7acab6d",
+          "upstream_path": "src/internal/copyright/copyright_test.go"
+        },
+        {
+          "file": "notices/f99df8ae6da6de047ed002d9dbe8682d9a19c88e9a7473abdadf3ac206621a85.txt",
+          "sha256": "f99df8ae6da6de047ed002d9dbe8682d9a19c88e9a7473abdadf3ac206621a85",
+          "upstream_path": "src/runtime/testdata/testgoroutineleakprofile/goker/LICENSE"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/vendor/golang.org/x/crypto/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/vendor/golang.org/x/crypto/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/vendor/golang.org/x/net/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/vendor/golang.org/x/net/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/vendor/golang.org/x/sys/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/vendor/golang.org/x/sys/PATENTS"
+        },
+        {
+          "file": "notices/911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad.txt",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
+          "upstream_path": "src/vendor/golang.org/x/text/LICENSE"
+        },
+        {
+          "file": "notices/96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc.txt",
+          "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+          "upstream_path": "src/vendor/golang.org/x/text/PATENTS"
+        }
+      ],
+      "source": "https://go.dev/dl/",
+      "version": "go1.26.10"
+    },
+    {
+      "ecosystem": "asset",
+      "license": "MIT",
+      "name": "flag-icons",
+      "notices": [
+        {
+          "file": "notices/8f1195d55a2fd315a07d812328470ca9ba2abb78c8d317ff19619d5125e00cea.txt",
+          "sha256": "8f1195d55a2fd315a07d812328470ca9ba2abb78c8d317ff19619d5125e00cea",
+          "upstream_path": "LICENSE.txt"
+        }
+      ],
+      "source": "https://github.com/lipis/flag-icons/tree/v7.5.0",
+      "version": "7.5.0"
+    },
+    {
+      "ecosystem": "fixture",
+      "license": "MIT",
+      "name": "MaxMind test databases",
+      "notices": [
+        {
+          "file": "notices/1df87b7d02b61565af885de9c6368651d0ffd1893b2d289ecaae725e9ac2f914.txt",
+          "sha256": "1df87b7d02b61565af885de9c6368651d0ffd1893b2d289ecaae725e9ac2f914",
+          "upstream_path": "LICENSE-MaxMind"
+        }
+      ],
+      "source": "https://github.com/maxmind/MaxMind-DB",
+      "version": "repository fixtures"
+    }
+  ],
+  "inputs": {
+    "go.mod": "42a88c2e175e1a92f262b9fed7e0d1da293aee0256fb9a9359addab037c33bcf",
+    "go.sum": "6edefe240e060577623fcd275209b6f506bb332a4010b0787eff3ec49b344e8b",
+    "web/package.json": "f8abd98902d7e838f080160e42c0510adc91e4a186fb088fa1dde0e68a739713",
+    "web/pnpm-lock.yaml": "a9dcec510049ddf7067bf9f9566f00d9f7e604cfb53fae68241c2309c6765cf1"
+  },
+  "schema": 1,
+  "scope": "runtime dependency closure, included assets and source fixtures"
+}

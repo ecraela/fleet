@@ -1,0 +1,436 @@
+/*
+ * Converge UI tokens.
+ *
+ * Values mirror the Resend dashboard: Radix alpha scales (red, green, amber,
+ * blue) plus Resend's custom gray ramp, exposed through semantic aliases.
+ * Orange, teal, violet, and pink carry only the steps avatar tints need.
+ * Components only consume the semantic layer (`--cv-*`). The raw scales stay
+ * available for charts and one-off status accents.
+ *
+ * Light is the default; `data-theme="dark"` on any ancestor switches the
+ * subtree. Storybook defaults to dark, which is Resend's primary look.
+ */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --gray-1: #f0f0f0;
+  --gray-2: #eeeeee;
+  --gray-3: #d7d7d7;
+  --gray-4: #bebebe;
+  --gray-5: #989898;
+  --gray-6: #7e7e7e;
+  --gray-7: #656565;
+  --gray-8: #4c4c4c;
+  --gray-9: #414141;
+  --gray-10: #3a3a3a;
+  --gray-11: #4d4d4d;
+  --gray-12: #191919;
+
+  --gray-a1: #0000000d;
+  --gray-a2: #00000014;
+  --gray-a3: #00000026;
+  --gray-a4: #00000059;
+  --gray-a5: #00000066;
+  --gray-a6: #00000080;
+  --gray-a7: #00000099;
+  --gray-a8: #000000b2;
+  --gray-a9: #000000bd;
+  --gray-a10: #000000c3;
+  --gray-a11: #000000cc;
+  --gray-a12: #000000f2;
+
+  --red-a1: #ff000003;
+  --red-a2: #ff000008;
+  --red-a3: #f3000d14;
+  --red-a4: #ff000824;
+  --red-a5: #ff000632;
+  --red-a6: #f8000442;
+  --red-a7: #df000356;
+  --red-a8: #d2000571;
+  --red-a9: #db0007b7;
+  --red-a10: #d10005c1;
+  --red-a11: #c40006d3;
+  --red-a12: #55000de8;
+
+  --green-a1: #00c00004;
+  --green-a2: #0099000a;
+  --green-a3: #00970016;
+  --green-a4: #009f0725;
+  --green-a5: #00930536;
+  --green-a6: #008f0a4d;
+  --green-a7: #018b0f6b;
+  --green-a8: #008d199a;
+  --green-a9: #008619b9;
+  --green-a10: #007b17c1;
+  --green-a11: #006514d5;
+  --green-a12: #002006df;
+
+  --amber-a1: #c0800004;
+  --amber-a2: #f4d10016;
+  --amber-a3: #ffde003d;
+  --amber-a4: #ffd40063;
+  --amber-a5: #f8cf0088;
+  --amber-a6: #eab5008c;
+  --amber-a7: #dc9b009d;
+  --amber-a8: #da8a00c9;
+  --amber-a9: #ffb300c2;
+  --amber-a10: #ffb300e7;
+  --amber-a11: #ab6400;
+  --amber-a12: #341500dd;
+
+  --blue-a1: #0080ff04;
+  --blue-a2: #008cff0b;
+  --blue-a3: #008ff519;
+  --blue-a4: #009eff2a;
+  --blue-a5: #0093ff3d;
+  --blue-a6: #0088f653;
+  --blue-a7: #0083eb71;
+  --blue-a8: #0084e6a1;
+  --blue-a9: #0090ff;
+  --blue-a10: #0086f0fa;
+  --blue-a11: #006dcbf2;
+  --blue-a12: #002359ee;
+
+  /* Radix Colors 3.0 scales used only for organization avatar tints. */
+  --orange-a1: #c0400004;
+  --orange-a2: #ff8e0012;
+  --orange-a5: #ff8b0065;
+  --orange-a6: #ff81007d;
+  --orange-a12: #431200e2;
+
+  --teal-a1: #00cc9905;
+  --teal-a2: #00aa800c;
+  --teal-a5: #00b49047;
+  --teal-a6: #00a6855e;
+  --teal-a12: #00332df2;
+
+  --violet-a1: #5500aa03;
+  --violet-a2: #4900ff07;
+  --violet-a5: #3600ff26;
+  --violet-a6: #3100fb35;
+  --violet-a12: #0b0043d9;
+
+  --pink-a1: #ff00aa03;
+  --pink-a2: #e0008008;
+  --pink-a5: #d1008331;
+  --pink-a6: #c0007840;
+  --pink-a12: #59003bed;
+
+  --cv-background: #fdfdfd;
+  --cv-accent: #000000;
+  --cv-accent-hover: rgb(0 0 0 / 90%);
+  --cv-on-accent: #ffffff;
+  --cv-ring-accent: rgb(0 0 0 / 20%);
+  --cv-text-placeholder: var(--gray-5);
+  --cv-kbd-on-accent-bg: rgb(255 255 255 / 20%);
+  --cv-kbd-on-accent-text: rgb(255 255 255 / 90%);
+  --cv-overlay: rgb(253 253 253 / 70%);
+  --cv-code-string: #0f7a60;
+  --cv-code-literal: var(--gray-7);
+
+  --cv-tile-neutral-strong: var(--gray-a2);
+  --cv-tile-neutral-weak: var(--gray-a1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --gray-1: #141517;
+  --gray-2: #191b1e;
+  --gray-3: #212629;
+  --gray-4: #293034;
+  --gray-5: #333b3e;
+  --gray-6: #3b4345;
+  --gray-7: #434a4d;
+  --gray-8: #52595b;
+  --gray-9: #6e7679;
+  --gray-10: #878d8f;
+  --gray-11: #a1a4a5;
+  --gray-12: #f0f0f0;
+
+  --gray-a1: #16171aeb;
+  --gray-a2: #18191ce0;
+  --gray-a3: #b0c7d925;
+  --gray-a4: #caecff33;
+  --gray-a5: #d2f3ff3d;
+  --gray-a6: #d7eff847;
+  --gray-a7: #e2f5fe4d;
+  --gray-a8: #d8eaf161;
+  --gray-a9: #dceff673;
+  --gray-a10: #e8f4f880;
+  --gray-a11: #fdfeffa6;
+  --gray-a12: #fdfdfded;
+
+  --red-a1: #f4121209;
+  --red-a2: #f22f3e11;
+  --red-a3: #ff173f2d;
+  --red-a4: #fe0a3b44;
+  --red-a5: #ff204756;
+  --red-a6: #ff3e5668;
+  --red-a7: #ff536184;
+  --red-a8: #ff5d61b0;
+  --red-a9: #fe4e54e4;
+  --red-a10: #ff6465eb;
+  --red-a11: #ff9592;
+  --red-a12: #ffd1d9;
+
+  --green-a1: #00de4505;
+  --green-a2: #29f99d0b;
+  --green-a3: #22ff991e;
+  --green-a4: #11ff992d;
+  --green-a5: #2bffa23c;
+  --green-a6: #44ffaa4b;
+  --green-a7: #50fdac5e;
+  --green-a8: #54ffad73;
+  --green-a9: #44ffa49e;
+  --green-a10: #43fea4ab;
+  --green-a11: #46fea5d4;
+  --green-a12: #bbffd7f0;
+
+  --amber-a1: #e63c0006;
+  --amber-a2: #fd9b000d;
+  --amber-a3: #fa820022;
+  --amber-a4: #fc820032;
+  --amber-a5: #fd8b0041;
+  --amber-a6: #fd9b0051;
+  --amber-a7: #ffab2567;
+  --amber-a8: #ffae3587;
+  --amber-a9: #ffc53d;
+  --amber-a10: #ffd60a;
+  --amber-a11: #ffca16;
+  --amber-a12: #ffe7b3;
+
+  --blue-a1: #004df211;
+  --blue-a2: #1166fb18;
+  --blue-a3: #0077ff3a;
+  --blue-a4: #0075ff57;
+  --blue-a5: #0081fd6b;
+  --blue-a6: #0f89fd7f;
+  --blue-a7: #2a91fe98;
+  --blue-a8: #3094feb9;
+  --blue-a9: #0090ff;
+  --blue-a10: #3b9eff;
+  --blue-a11: #70b8ff;
+  --blue-a12: #c2e6ff;
+
+  --orange-a1: #ec360007;
+  --orange-a2: #fe6d000e;
+  --orange-a5: #ff61004a;
+  --orange-a6: #fd75045c;
+  --orange-a12: #ffe0c2;
+
+  --teal-a1: #00deab05;
+  --teal-a2: #12fbe60c;
+  --teal-a5: #00ffea3b;
+  --teal-a6: #1cffe84b;
+  --teal-a12: #b8ffebef;
+
+  --violet-a1: #4422ff0f;
+  --violet-a2: #853ff916;
+  --violet-a5: #845ffd5f;
+  --violet-a6: #8f6cfd6d;
+  --violet-a12: #e3defffe;
+
+  --pink-a1: #f412bc09;
+  --pink-a2: #f420bb12;
+  --pink-a5: #fd35c24e;
+  --pink-a6: #fd51c75f;
+  --pink-a12: #ffd3ecfd;
+
+  --cv-background: #000000;
+  --cv-accent: #ffffff;
+  --cv-accent-hover: var(--gray-12);
+  --cv-on-accent: #000000;
+  --cv-ring-accent: var(--gray-a4);
+  --cv-text-placeholder: var(--gray-8);
+  --cv-kbd-on-accent-bg: rgb(0 0 0 / 10%);
+  --cv-kbd-on-accent-text: rgb(0 0 0 / 60%);
+  --cv-overlay: rgb(0 0 0 / 70%);
+  --cv-code-string: #9fdfcc;
+  --cv-code-literal: var(--gray-10);
+
+  --cv-tile-neutral-strong: var(--gray-a3);
+  --cv-tile-neutral-weak: var(--gray-a2);
+}
+
+:root,
+[data-theme] {
+  /* Surfaces */
+  --cv-bg: var(--cv-background);
+  --cv-bg-floating: var(--gray-3);
+  --cv-bg-interactive: var(--gray-a2);
+  --cv-bg-interactive-hover: var(--gray-a3);
+
+  /* Borders */
+  --cv-border-default: var(--gray-3);
+  --cv-border-strong: var(--gray-6);
+  --cv-border-interactive: var(--gray-a3);
+  --cv-border-subtle: var(--gray-2);
+  --cv-border-link: var(--gray-3);
+  --cv-border-link-hover: var(--blue-a9);
+
+  /* Text */
+  --cv-text-emphasis: var(--gray-12);
+  --cv-text-default: var(--gray-11);
+  --cv-text-muted: var(--gray-8);
+
+  --cv-text-subtle: var(--gray-10);
+
+  /* Rows */
+  --cv-bg-row-hover: var(--gray-a1);
+
+  /*
+   * Focus. `ring-field` is Resend's exact halo around a focused text input,
+   * where the caret already signals focus. Resend reuses that halo for
+   * keyboard focus on buttons, which is nearly invisible; Converge requires a
+   * visible focus indicator, so controls use the stronger `ring-focus`.
+   */
+  --cv-ring-field: var(--gray-a2);
+  --cv-ring-focus: var(--gray-a6);
+
+  /* Status */
+  --cv-bg-error: var(--red-a3);
+  --cv-bg-error-hover: var(--red-a5);
+  --cv-border-error: var(--red-a6);
+  --cv-border-error-subtle: var(--red-a4);
+  --cv-ring-error: var(--red-a7);
+  --cv-text-error: var(--red-a11);
+  --cv-bg-success: var(--green-a3);
+  --cv-text-success: var(--green-a11);
+  --cv-bg-warning: var(--amber-a3);
+  --cv-text-warning: var(--amber-a11);
+  --cv-bg-info: var(--blue-a3);
+  --cv-text-info: var(--blue-a11);
+
+  /* Typography */
+  --cv-font-sans:
+    "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  --cv-font-display:
+    "ABC Favorit", "Geist Variable", Geist, "Inter Variable", ui-sans-serif,
+    system-ui, sans-serif;
+  --cv-font-mono:
+    "Commit Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+
+  --cv-text-xs: 12px;
+  --cv-text-xs-lh: 16px;
+  --cv-text-sm: 14px;
+  --cv-text-sm-lh: 20px;
+  --cv-text-base: 16px;
+  --cv-text-base-lh: 24px;
+  --cv-text-lg: 18px;
+  --cv-text-lg-lh: 28px;
+  /* Text inputs follow `sm`; touch screens raise them to 16px below. */
+  --cv-text-field: var(--cv-text-sm);
+  --cv-text-field-lh: var(--cv-text-sm-lh);
+  --cv-text-display: 28px;
+  --cv-text-display-lh: 34px;
+  --cv-tracking-display: -0.045rem;
+
+  /* Spacing */
+  --cv-space-1: 4px;
+  --cv-space-2: 8px;
+  --cv-space-3: 12px;
+  --cv-space-4: 16px;
+  --cv-space-5: 20px;
+  --cv-space-6: 24px;
+  --cv-space-8: 32px;
+  --cv-space-12: 48px;
+
+  /* Radius */
+  --cv-radius-sm: 4px;
+  --cv-radius-md: 6px;
+  --cv-radius-lg: 8px;
+  --cv-radius-xl: 12px;
+  --cv-radius-2xl: 16px;
+  --cv-radius-3xl: 24px;
+  --cv-radius-4xl: 32px;
+
+  /* Elevation */
+  --cv-shadow-lg:
+    0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+
+  /* Motion */
+  --cv-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --cv-duration-fast: 150ms;
+  --cv-duration: 200ms;
+  --cv-duration-slow: 300ms;
+
+  /* Layout */
+  /* The console's sticky top bar; sticky content below it offsets by this. */
+  --cv-topbar-height: 58px;
+}
+
+/* iOS Safari zooms the page when focusing a field with text under 16px. */
+@media (pointer: coarse) {
+  [data-theme] {
+    --cv-text-field: var(--cv-text-base);
+    --cv-text-field-lh: var(--cv-text-base-lh);
+  }
+}
+
+/* Recorded-data colors, independent of operational status. */
+:root,
+[data-theme="light"] {
+  --cv-chart-blue: #2563eb;
+  --cv-chart-teal: #0f766e;
+  --cv-chart-violet: #7c3aed;
+  --cv-chart-amber: #b45309;
+  --cv-chart-rose: #be185d;
+  --cv-chart-cyan: #0369a1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --cv-chart-blue: #60a5fa;
+    --cv-chart-teal: #2dd4bf;
+    --cv-chart-violet: #a78bfa;
+    --cv-chart-amber: #fbbf24;
+    --cv-chart-rose: #f472b6;
+    --cv-chart-cyan: #22d3ee;
+  }
+}
+[data-theme="dark"] {
+  --cv-chart-blue: #60a5fa;
+  --cv-chart-teal: #2dd4bf;
+  --cv-chart-violet: #a78bfa;
+  --cv-chart-amber: #fbbf24;
+  --cv-chart-rose: #f472b6;
+  --cv-chart-cyan: #22d3ee;
+}
+:root,
+[data-theme] {
+  --cv-bg-panel: var(--gray-a1);
+}
+.cv-metric-card[data-color="blue"],
+.cv-sparkline[data-color="blue"],
+.cv-time-series__line[data-color="blue"] {
+  --cv-series-color: var(--cv-chart-blue);
+}
+.cv-metric-card[data-color="teal"],
+.cv-sparkline[data-color="teal"],
+.cv-time-series__line[data-color="teal"] {
+  --cv-series-color: var(--cv-chart-teal);
+}
+.cv-metric-card[data-color="violet"],
+.cv-sparkline[data-color="violet"],
+.cv-time-series__line[data-color="violet"] {
+  --cv-series-color: var(--cv-chart-violet);
+}
+.cv-metric-card[data-color="amber"],
+.cv-sparkline[data-color="amber"],
+.cv-time-series__line[data-color="amber"] {
+  --cv-series-color: var(--cv-chart-amber);
+}
+.cv-metric-card[data-color="rose"],
+.cv-sparkline[data-color="rose"],
+.cv-time-series__line[data-color="rose"] {
+  --cv-series-color: var(--cv-chart-rose);
+}
+.cv-metric-card[data-color="cyan"],
+.cv-sparkline[data-color="cyan"],
+.cv-time-series__line[data-color="cyan"] {
+  --cv-series-color: var(--cv-chart-cyan);
+}

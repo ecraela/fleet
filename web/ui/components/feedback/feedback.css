@@ -1,0 +1,165 @@
+.cv-sync-state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cv-space-3);
+  padding: var(--cv-space-8) var(--cv-space-5);
+  border: 1px solid var(--cv-border-default);
+  border-radius: var(--cv-radius-2xl);
+  background: var(--cv-bg-interactive);
+}
+
+.cv-sync-state > svg {
+  flex-shrink: 0;
+  color: var(--cv-text-success);
+}
+
+.cv-sync-state__content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cv-sync-state__title {
+  margin: 0;
+  color: var(--cv-text-emphasis);
+  font-size: var(--cv-text-sm);
+  font-weight: 550;
+  line-height: var(--cv-text-sm-lh);
+}
+
+.cv-sync-state__description {
+  margin: var(--cv-space-1) 0 0;
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-xs);
+  line-height: var(--cv-text-xs-lh);
+}
+
+.cv-skeleton {
+  display: block;
+  border-radius: var(--cv-radius-lg);
+  background: var(--cv-bg-interactive);
+  animation: cv-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.cv-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 264px;
+  padding: 48px 24px;
+  border: 1px solid var(--cv-border-default);
+  border-radius: var(--cv-radius-2xl);
+  text-align: center;
+}
+
+.cv-empty-state__icon {
+  margin-bottom: 16px;
+}
+
+.cv-empty-state__title {
+  margin: 0;
+  color: var(--cv-text-emphasis);
+  font-size: var(--cv-text-lg);
+  font-weight: 600;
+  line-height: var(--cv-text-lg-lh);
+}
+
+.cv-empty-state__description {
+  max-width: 480px;
+  margin: 4px 0 0;
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+}
+
+.cv-empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.cv-empty-state--sm {
+  align-items: flex-start;
+  min-height: 0;
+  padding: var(--cv-space-6);
+  text-align: left;
+}
+
+.cv-empty-state--sm .cv-empty-state__title {
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+}
+
+.cv-empty-state--sm .cv-empty-state__actions {
+  justify-content: flex-start;
+}
+
+/* Icon tile: a gentle tinted gradient under a single hairline. ---------- */
+
+.cv-icon-tile {
+  --cv-tile-ink: var(--cv-text-emphasis);
+  --cv-tile-strong: var(--cv-tile-neutral-strong);
+  --cv-tile-weak: var(--cv-tile-neutral-weak);
+  --cv-tile-line: var(--cv-border-interactive);
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid var(--cv-tile-line);
+  background: linear-gradient(
+    180deg,
+    var(--cv-tile-strong),
+    var(--cv-tile-weak)
+  );
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+  color: var(--cv-tile-ink);
+}
+
+.cv-icon-tile--success {
+  --cv-tile-ink: var(--cv-text-success);
+  --cv-tile-strong: var(--green-a4);
+  --cv-tile-weak: var(--green-a2);
+  --cv-tile-line: var(--green-a5);
+}
+
+.cv-icon-tile--warning {
+  --cv-tile-ink: var(--cv-text-warning);
+  --cv-tile-strong: var(--amber-a4);
+  --cv-tile-weak: var(--amber-a2);
+  --cv-tile-line: var(--amber-a5);
+}
+
+.cv-icon-tile--error {
+  --cv-tile-ink: var(--cv-text-error);
+  --cv-tile-strong: var(--red-a4);
+  --cv-tile-weak: var(--red-a2);
+  --cv-tile-line: var(--red-a5);
+}
+
+.cv-icon-tile__glyph {
+  display: grid;
+  place-items: center;
+}
+
+.cv-icon-tile--sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+
+.cv-icon-tile--sm svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cv-icon-tile--lg {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+}
+
+.cv-icon-tile--lg svg {
+  width: 30px;
+  height: 30px;
+}

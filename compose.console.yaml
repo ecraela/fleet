@@ -1,0 +1,32 @@
+# Optional loopback development integration. The standalone compose.yaml keeps
+# Converge federation disabled. Production uses secure cookies and a public CA.
+services:
+  manager:
+    environment:
+      HAPROXY_LOGIN_SECRET_FILE: /run/secrets/browser-login
+      HAPROXY_BROWSER_ORIGIN: ${HAPROXY_BROWSER_ORIGIN:-http://localhost:5173}
+      HAPROXY_AGENT_IMAGE: converge-haproxy:local
+      HAPROXY_AGENT_MANAGER_URL: https://manager:8443
+      HAPROXY_AGENT_INGEST_URL: https://ingest:8443
+      HAPROXY_AGENT_NETWORK: converge-haproxy_default
+      HAPROXY_AGENT_METRICS_URL: http://haproxy:8404/metrics
+    volumes:
+      - ./deploy/local/state.local/browser-login:/run/secrets/browser-login:ro
+    command:
+      - serve
+      - --role
+      - manager
+      - --migrate
+      - --listen
+      - :8443
+      - --pki-dir
+      - /pki
+      - --tls-cert
+      - /pki/server.crt
+      - --tls-key
+      - /pki/server.key
+      - --admin-token-file
+      - /run/secrets/admin-token
+      - --metrics-url
+      - http://victoriametrics:8428
+      - --browser-insecure-cookies

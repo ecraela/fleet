@@ -1,0 +1,16 @@
+**/*.local
+**/.env
+**/.env.*
+**/*.key
+**/*.pem
+**/admin-token
+**/enrollment-token
+**/compose.env
+**/*.log
+.git
+
+**/node_modules
+internal/webui/dist/*
+!internal/webui/dist/.keep
+web/coverage
+web/public/legal

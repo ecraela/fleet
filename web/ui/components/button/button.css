@@ -1,0 +1,217 @@
+.cv-button {
+  --cv-icon-size: 15px;
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--cv-radius-xl);
+  font-family: var(--cv-font-sans);
+  font-size: var(--cv-text-sm);
+  font-weight: 500;
+  line-height: var(--cv-text-sm-lh);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  transition-property:
+    color, background-color, border-color, box-shadow, opacity;
+  transition-duration: var(--cv-duration);
+  transition-timing-function: var(--cv-ease);
+}
+
+.cv-button__content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
+  min-width: 0;
+}
+
+.cv-button__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.cv-button__icon svg {
+  width: var(--cv-icon-size);
+  height: var(--cv-icon-size);
+}
+
+.cv-button__shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 4px;
+}
+
+/* Sizes */
+
+.cv-button--sm {
+  --cv-icon-size: 14px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--cv-radius-lg);
+  font-size: var(--cv-text-xs);
+  line-height: var(--cv-text-xs-lh);
+}
+
+.cv-button--lg {
+  height: 40px;
+  padding: 0 16px;
+}
+
+.cv-button--md.cv-button--leading-icon {
+  padding-left: 10px;
+}
+
+.cv-button--shortcut {
+  padding-right: 6px;
+}
+
+.cv-button--icon-only {
+  width: 32px;
+  padding: 0;
+}
+
+.cv-button--icon-only.cv-button--sm {
+  width: 24px;
+}
+
+.cv-button--icon-only.cv-button--lg {
+  width: 40px;
+}
+
+/* Variants */
+
+.cv-button--primary {
+  border-color: currentColor;
+  background: var(--cv-accent);
+  color: var(--cv-on-accent);
+  font-weight: 600;
+}
+
+.cv-button--primary[data-hovered],
+.cv-button--primary[data-focus-visible] {
+  background: var(--cv-accent-hover);
+}
+
+.cv-button--primary[data-focus-visible] {
+  box-shadow: 0 0 0 2px var(--cv-ring-accent);
+}
+
+.cv-button--primary .cv-kbd {
+  background: var(--cv-kbd-on-accent-bg);
+  color: var(--cv-kbd-on-accent-text);
+}
+
+.cv-button--secondary {
+  border-color: var(--cv-border-interactive);
+  background: var(--cv-bg-interactive);
+  color: var(--cv-text-default);
+}
+
+.cv-button--ghost {
+  background: transparent;
+  color: var(--cv-text-default);
+}
+
+.cv-button--secondary[data-hovered],
+.cv-button--secondary[data-pressed],
+.cv-button--secondary[data-focus-visible],
+.cv-button--secondary[aria-expanded="true"],
+.cv-button--ghost[data-hovered],
+.cv-button--ghost[data-pressed],
+.cv-button--ghost[aria-expanded="true"] {
+  background: var(--cv-bg-interactive-hover);
+}
+
+.cv-button--secondary[data-focus-visible],
+.cv-button--ghost[data-focus-visible] {
+  box-shadow: 0 0 0 2px var(--cv-ring-focus);
+}
+
+.cv-button--danger {
+  background: var(--cv-bg-error);
+  color: var(--cv-text-error);
+  font-weight: 600;
+}
+
+.cv-button--danger[data-hovered],
+.cv-button--danger[data-pressed] {
+  background: var(--cv-bg-error-hover);
+}
+
+.cv-button--danger[data-focus-visible] {
+  box-shadow: 0 0 0 2px var(--cv-ring-error);
+}
+
+.cv-button--danger .cv-kbd {
+  background: var(--red-a4);
+  color: var(--cv-text-error);
+}
+
+/* States */
+
+.cv-button-disabled-trigger {
+  display: inline-flex;
+  flex-shrink: 0;
+  border-radius: var(--cv-radius-xl);
+  cursor: not-allowed;
+  outline: none;
+}
+
+.cv-button-disabled-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--cv-ring-focus);
+}
+
+.cv-button-disabled-trigger > span[aria-hidden] {
+  display: inline-flex;
+  pointer-events: none;
+}
+
+.cv-button[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.cv-button[data-pending] {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.cv-button[data-pending] .cv-button__content {
+  opacity: 0;
+}
+
+.cv-button__loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.cv-button__loader span {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: cv-plop 1s ease-in-out 0.1s infinite;
+}
+
+.cv-button__loader span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.cv-button__loader span:nth-child(3) {
+  animation-delay: 0.4s;
+}

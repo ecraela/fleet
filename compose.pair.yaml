@@ -1,0 +1,371 @@
+# A real local traffic pair, sharing only the independent management stack.
+# Apply after compose.yaml (and compose.console.yaml for shared Converge login).
+x-pair-node: &pair-node
+  image: converge-haproxy-node:local
+  build:
+    context: .
+    dockerfile: deploy/local/pair/Dockerfile
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  volumes: []
+  tmpfs: ["/tmp:size=32m,mode=1777"]
+  depends_on:
+    pair-backend:
+      condition: service_started
+    pair-backend-2:
+      condition: service_started
+    pair-config-init:
+      condition: service_completed_successfully
+  healthcheck:
+    test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8404/healthz]
+    interval: 2s
+    timeout: 2s
+    retries: 15
+  mem_limit: 128m
+
+x-pair-agent: &pair-agent
+  image: converge-haproxy:local
+  user: "${HAPROXY_UID:-10001}:${HAPROXY_GID:-10001}"
+  entrypoint: [/usr/local/bin/haproxy-agent]
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:size=16m,mode=1777"]
+  environment:
+    GOMEMLIMIT: 48MiB
+    GOMAXPROCS: 1
+  mem_limit: 64m
+  group_add: ["10001"]
+
+services:
+  pair-runtime-init:
+    image: haproxy:3.4.7-alpine3.24
+    user: "0:0"
+    entrypoint: [/bin/sh, -c]
+    command:
+      [
+        "for n in a b entrypoint; do mkdir -p /config-$$n/dpa; chown 10001:10001 /config-$$n /config-$$n/dpa /runtime-$$n; chmod 2770 /config-$$n /config-$$n/dpa /runtime-$$n; done",
+      ]
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+    group_add: ["10001"]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - pair-runtime-a:/runtime-a
+      - pair-runtime-b:/runtime-b
+      - pair-runtime-entrypoint:/runtime-entrypoint
+      - pair-config-a:/config-a
+      - pair-config-b:/config-b
+      - pair-config-entrypoint:/config-entrypoint
+    mem_limit: 16m
+  pair-config-init:
+    image: haproxy:3.4.7-alpine3.24
+    user: "${HAPROXY_UID:-10001}:${HAPROXY_GID:-10001}"
+    group_add: ["10001"]
+    entrypoint: [/bin/sh, -c]
+    command:
+      [
+        "set -e; umask 007; for n in a b entrypoint; do if [ ! -f /config-$$n/haproxy.cfg ]; then cp /seed/$$n.cfg /config-$$n/haproxy.cfg; chmod 0660 /config-$$n/haproxy.cfg; fi; cp /secrets/dataplane-$$n.yaml /config-$$n/dataplaneapi.yaml.new; chmod 0660 /config-$$n/dataplaneapi.yaml.new; mv /config-$$n/dataplaneapi.yaml.new /config-$$n/dataplaneapi.yaml; done; for n in a b; do mkdir -p /config-$$n/certificates; for p in /tls/*.pem; do dst=/config-$$n/certificates/$${p##*/}; if [ -f $$dst ]; then cmp -s $$p $$dst; else cp $$p $$dst; chmod 0640 $$dst; fi; done; done",
+      ]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - pair-config-a:/config-a
+      - pair-config-b:/config-b
+      - pair-config-entrypoint:/config-entrypoint
+      - ./deploy/local/pair/node.cfg:/seed/a.cfg:ro
+      - ./deploy/local/pair/node.cfg:/seed/b.cfg:ro
+      - ./deploy/local/pair/entrypoint.cfg:/seed/entrypoint.cfg:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/dataplane-a.yaml:/secrets/dataplane-a.yaml:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/dataplane-b.yaml:/secrets/dataplane-b.yaml:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/dataplane-entrypoint.yaml:/secrets/dataplane-entrypoint.yaml:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/tls:/tls:ro
+    depends_on:
+      pair-runtime-init:
+        condition: service_completed_successfully
+    mem_limit: 16m
+  manager:
+    # Explicit, tenant-bound local operator credentials. The regular standalone
+    # operator remains valid; no organization is selected from a caller header.
+    command:
+      - serve
+      - --role
+      - manager
+      - --migrate
+      - --listen
+      - :8443
+      - --pki-dir
+      - /pki
+      - --tls-cert
+      - /pki/server.crt
+      - --tls-key
+      - /pki/server.key
+      - --admin-token-file
+      - /run/secrets/admin-token
+      - --operator-credentials-file
+      - /run/secrets/pair-operators.json
+      - --metrics-url
+      - http://victoriametrics:8428
+      - --browser-insecure-cookies
+    volumes:
+      - ./deploy/local/state.local/pair/operators.json:/run/secrets/pair-operators.json:ro
+
+  pair-backend:
+    image: converge-haproxy-demo-backend:local
+    build:
+      context: .
+      dockerfile: deploy/local/backend.Dockerfile
+    user: "${HAPROXY_UID:-10001}:${HAPROXY_GID:-10001}"
+    entrypoint: [/usr/local/bin/demo-backend]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 32m
+    environment:
+      DEMO_BACKEND: app-a
+      DEMO_STREAM_GATE_FILE: /tmp/release-stream
+      DEMO_FAILURE_PATH: /shop/items
+      DEMO_FAILURE_FILE: /tmp/store-fault
+    tmpfs: ["/tmp:size=1m,mode=1777"]
+
+  pair-backend-2:
+    image: converge-haproxy-demo-backend:local
+    build:
+      context: .
+      dockerfile: deploy/local/backend.Dockerfile
+    user: "${HAPROXY_UID:-10001}:${HAPROXY_GID:-10001}"
+    entrypoint: [/usr/local/bin/demo-backend]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      DEMO_BACKEND: app-b
+      DEMO_STREAM_GATE_FILE: /tmp/release-stream
+      DEMO_FAILURE_PATH: /shop/items
+      DEMO_FAILURE_FILE: /tmp/store-fault
+    tmpfs: ["/tmp:size=1m,mode=1777"]
+    mem_limit: 32m
+
+  pair-fault-backend:
+    profiles: [verification]
+    image: converge-haproxy-demo-backend:local
+    build:
+      context: .
+      dockerfile: deploy/local/backend.Dockerfile
+    user: "${HAPROXY_UID:-10001}:${HAPROXY_GID:-10001}"
+    entrypoint: [/usr/local/bin/demo-backend]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      DEMO_BACKEND: app-a
+      DEMO_FAILURE_PATH: /shop/items
+    mem_limit: 32m
+
+  haproxy-a:
+    <<: *pair-node
+    environment:
+      DEMO_NODE: haproxy-a
+    volumes:
+      - pair-config-a:/var/lib/haproxy
+      - pair-runtime-a:/run/haproxy
+
+  haproxy-b:
+    <<: *pair-node
+    environment:
+      DEMO_NODE: haproxy-b
+    volumes:
+      - pair-config-b:/var/lib/haproxy
+      - pair-runtime-b:/run/haproxy
+
+  pair-entrypoint:
+    <<: *pair-node
+    environment:
+      DEMO_NODE: pair-entrypoint
+    volumes:
+      - pair-config-entrypoint:/var/lib/haproxy
+      - pair-runtime-entrypoint:/run/haproxy
+    ports: [127.0.0.1:18081:8080, 127.0.0.1:18444:8443]
+    depends_on:
+      pair-config-init:
+        condition: service_completed_successfully
+      haproxy-a:
+        condition: service_healthy
+      haproxy-b:
+        condition: service_healthy
+
+  agent-a:
+    <<: *pair-agent
+    command:
+      [
+        --server-url,
+        "https://manager:8443",
+        --ingest-url,
+        "https://ingest:8443",
+        --server-ca,
+        /run/haproxy/ca.crt,
+        --enrollment-token-file,
+        /run/secrets/enrollment-token,
+        --state-dir,
+        /var/lib/haproxy-agent,
+        --name,
+        haproxy-a,
+        --access-log-socket,
+        /run/haproxy-runtime/access.sock,
+        --request-path-policy,
+        /run/haproxy-paths/policy.json,
+        --metrics-url,
+        "http://haproxy-a:8404/metrics",
+        --interval,
+        1s,
+        --runtime-socket,
+        /run/haproxy-runtime/admin.sock,
+        --config-file,
+        /run/haproxy-agent/haproxy.cfg,
+        --allow-runtime-control,
+        --dataplane-socket,
+        /run/haproxy-runtime/dataplane.sock,
+        --dataplane-credentials-file,
+        /run/secrets/dataplane-credentials,
+        --allow-configuration-control,
+        --tls-policy-file,
+        /run/secrets/tls-policy,
+        --probe-policy-file,
+        /run/secrets/probe-policy,
+      ]
+    volumes:
+      - ./deploy/local/state.local/pki/ca.crt:/run/haproxy/ca.crt:ro
+      - ./deploy/local/pair/request-path-policy.json:/run/haproxy-paths/policy.json:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/token-a:/run/secrets/enrollment-token:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/agent-a:/var/lib/haproxy-agent
+      - pair-runtime-a:/run/haproxy-runtime
+      - pair-config-a:/run/haproxy-agent:ro
+      - pair-config-a:/var/lib/haproxy:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/tls-policy-a.json:/run/secrets/tls-policy:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/probe-policy-a.json:/run/secrets/probe-policy:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/tls/ca.crt:/run/secrets/probe-ca.crt:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/dataplane-a.json:/run/secrets/dataplane-credentials:ro
+    depends_on:
+      manager:
+        condition: service_healthy
+      haproxy-a:
+        condition: service_healthy
+      ingest:
+        condition: service_started
+
+  agent-b:
+    <<: *pair-agent
+    command:
+      [
+        --server-url,
+        "https://manager:8443",
+        --ingest-url,
+        "https://ingest:8443",
+        --server-ca,
+        /run/haproxy/ca.crt,
+        --enrollment-token-file,
+        /run/secrets/enrollment-token,
+        --state-dir,
+        /var/lib/haproxy-agent,
+        --name,
+        haproxy-b,
+        --access-log-socket,
+        /run/haproxy-runtime/access.sock,
+        --request-path-policy,
+        /run/haproxy-paths/policy.json,
+        --metrics-url,
+        "http://haproxy-b:8404/metrics",
+        --interval,
+        1s,
+        --runtime-socket,
+        /run/haproxy-runtime/admin.sock,
+        --config-file,
+        /run/haproxy-agent/haproxy.cfg,
+        --allow-runtime-control,
+        --dataplane-socket,
+        /run/haproxy-runtime/dataplane.sock,
+        --dataplane-credentials-file,
+        /run/secrets/dataplane-credentials,
+        --allow-configuration-control,
+        --tls-policy-file,
+        /run/secrets/tls-policy,
+        --probe-policy-file,
+        /run/secrets/probe-policy,
+      ]
+    volumes:
+      - ./deploy/local/state.local/pki/ca.crt:/run/haproxy/ca.crt:ro
+      - ./deploy/local/pair/request-path-policy.json:/run/haproxy-paths/policy.json:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/token-b:/run/secrets/enrollment-token:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/agent-b:/var/lib/haproxy-agent
+      - pair-runtime-b:/run/haproxy-runtime
+      - pair-config-b:/run/haproxy-agent:ro
+      - pair-config-b:/var/lib/haproxy:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/tls-policy-b.json:/run/secrets/tls-policy:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/probe-policy-b.json:/run/secrets/probe-policy:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/tls/ca.crt:/run/secrets/probe-ca.crt:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/dataplane-b.json:/run/secrets/dataplane-credentials:ro
+    depends_on:
+      manager:
+        condition: service_healthy
+      haproxy-b:
+        condition: service_healthy
+      ingest:
+        condition: service_started
+
+  agent-entrypoint:
+    <<: *pair-agent
+    command:
+      [
+        --server-url,
+        "https://manager:8443",
+        --ingest-url,
+        "https://ingest:8443",
+        --server-ca,
+        /run/haproxy/ca.crt,
+        --enrollment-token-file,
+        /run/secrets/enrollment-token,
+        --state-dir,
+        /var/lib/haproxy-agent,
+        --name,
+        pair-entrypoint,
+        --metrics-url,
+        "http://pair-entrypoint:8404/metrics",
+        --interval,
+        1s,
+        --runtime-socket,
+        /run/haproxy-runtime/admin.sock,
+        --config-file,
+        /run/haproxy-agent/haproxy.cfg,
+        --allow-runtime-control,
+        --dataplane-socket,
+        /run/haproxy-runtime/dataplane.sock,
+        --dataplane-credentials-file,
+        /run/secrets/dataplane-credentials,
+        --allow-configuration-control,
+      ]
+    volumes:
+      - ./deploy/local/state.local/pki/ca.crt:/run/haproxy/ca.crt:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/token-entrypoint:/run/secrets/enrollment-token:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/agent-entrypoint:/var/lib/haproxy-agent
+      - pair-runtime-entrypoint:/run/haproxy-runtime:ro
+      - pair-config-entrypoint:/run/haproxy-agent:ro
+      - ${HAPROXY_PAIR_STATE:-./deploy/local/state.local/pair}/dataplane-entrypoint.json:/run/secrets/dataplane-credentials:ro
+    depends_on:
+      manager:
+        condition: service_healthy
+      pair-entrypoint:
+        condition: service_healthy
+      ingest:
+        condition: service_started
+
+volumes:
+  pair-runtime-a:
+  pair-runtime-b:
+  pair-config-a:
+  pair-config-b:
+  pair-runtime-entrypoint:
+  pair-config-entrypoint:

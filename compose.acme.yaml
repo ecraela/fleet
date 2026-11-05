@@ -1,0 +1,85 @@
+# Opt-in ACME test CA and authoritative RFC 2136 validation zone.
+# The demo.test CNAME is an existing local delegation fixture, never a public
+# provider write. Converge still prepares its DNS draft through normal review.
+services:
+  acme-dns:
+    image: internetsystemsconsortium/bind9:9.20@sha256:66092edb53c081fa11b1fa8219e99065b0f497cb38f568ba789702a4c10e2590
+    user: "${HAPROXY_UID:-10001}:${HAPROXY_GID:-10001}"
+    entrypoint: [/usr/sbin/named]
+    platform: linux/amd64
+    command: [-g, -n, "1", -c, /lab/named.conf]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    volumes:
+      - ${HAPROXY_PAIR_STATE}/acme/dns:/lab
+    mem_limit: 64m
+  acme-ca:
+    image: converge-haproxy-acme-ca:local
+    build:
+      context: .
+      dockerfile: deploy/local/acme/Dockerfile
+    user: "${HAPROXY_UID:-10001}:${HAPROXY_GID:-10001}"
+    command: [-config, /lab/pebble.json, -dnsserver, "acme-dns:8053"]
+    environment:
+      PEBBLE_VA_NOSLEEP: "1"
+      PEBBLE_AUTHZREUSE: "0"
+      PEBBLE_WFE_NONCEREJECT: "0"
+      PEBBLE_ALTERNATE_ROOTS: "0"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ${HAPROXY_PAIR_STATE}/acme/ca:/lab:ro
+    ports: ["127.0.0.1:14000:14000", "127.0.0.1:15000:15000"]
+    depends_on: [acme-dns]
+    mem_limit: 64m
+  acme-volume-init:
+    image: haproxy:3.4.7-alpine3.24
+    user: "0:0"
+    entrypoint: [/bin/sh, -c]
+    command:
+      [
+        "for n in a b; do chown -R ${HAPROXY_UID:-10001}:10001 /certs-$$n; chmod 2750 /certs-$$n; done",
+      ]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER]
+    group_add: ["10001"]
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - pair-acme-a:/certs-a
+      - pair-acme-b:/certs-b
+    mem_limit: 16m
+  haproxy-a:
+    volumes:
+      - pair-acme-a:/var/lib/haproxy/certificates/acme:ro
+  haproxy-b:
+    volumes:
+      - pair-acme-b:/var/lib/haproxy/certificates/acme:ro
+  agent-a:
+    environment:
+      HAPROXY_ACME_POLICY_FILE: /run/secrets/acme-policy
+    volumes:
+      - pair-acme-a:/var/lib/haproxy/certificates/acme
+      - ${HAPROXY_PAIR_STATE}/acme/policy-a.json:/run/secrets/acme-policy:ro
+      - ${HAPROXY_PAIR_STATE}/acme/tsig-a:/run/secrets/acme-tsig:ro
+      - ${HAPROXY_PAIR_STATE}/acme/public:/run/secrets/acme-trust:ro
+      - ${HAPROXY_PAIR_STATE}/acme/public/trust.pem:/run/secrets/probe-ca.crt:ro
+    depends_on:
+      acme-volume-init: { condition: service_completed_successfully }
+  agent-b:
+    environment:
+      HAPROXY_ACME_POLICY_FILE: /run/secrets/acme-policy
+    volumes:
+      - pair-acme-b:/var/lib/haproxy/certificates/acme
+      - ${HAPROXY_PAIR_STATE}/acme/policy-b.json:/run/secrets/acme-policy:ro
+      - ${HAPROXY_PAIR_STATE}/acme/tsig-b:/run/secrets/acme-tsig:ro
+      - ${HAPROXY_PAIR_STATE}/acme/public:/run/secrets/acme-trust:ro
+      - ${HAPROXY_PAIR_STATE}/acme/public/trust.pem:/run/secrets/probe-ca.crt:ro
+    depends_on:
+      acme-volume-init: { condition: service_completed_successfully }
+volumes:
+  pair-acme-a:
+  pair-acme-b:

@@ -1,0 +1,50 @@
+.cv-tooltip {
+  --cv-tooltip-shift: 4px;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 8px 12px;
+  border: 1px solid var(--cv-border-interactive);
+  border-radius: var(--cv-radius-xl);
+  background: var(--cv-bg);
+  color: var(--cv-text-emphasis);
+  box-shadow: var(--cv-shadow-lg);
+  font-family: var(--cv-font-sans);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+  overflow-wrap: anywhere;
+}
+
+.cv-tooltip-text {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: help;
+}
+
+.cv-tooltip-text[data-focus-visible] {
+  border-radius: var(--cv-radius-sm);
+  outline: 2px solid var(--cv-ring-focus);
+  outline-offset: 2px;
+}
+
+.cv-tooltip[data-placement="bottom"] {
+  --cv-tooltip-shift: -4px;
+}
+
+.cv-tooltip[data-entering] {
+  animation: cv-tooltip-in var(--cv-duration) ease-out;
+}
+
+.cv-tooltip[data-exiting] {
+  animation: cv-fade-out var(--cv-duration-fast) ease-in forwards;
+}
+
+@keyframes cv-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--cv-tooltip-shift));
+  }
+}

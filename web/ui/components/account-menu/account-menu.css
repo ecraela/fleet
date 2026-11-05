@@ -1,0 +1,147 @@
+.cv-account-menu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: var(--cv-radius-xl);
+  background: transparent;
+  color: var(--cv-text-default);
+  font: inherit;
+  font-family: var(--cv-font-sans);
+  font-size: var(--cv-text-sm);
+  font-weight: 600;
+  line-height: var(--cv-text-sm-lh);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  transition-property: color, background-color, box-shadow;
+  transition-duration: var(--cv-duration);
+  transition-timing-function: var(--cv-ease);
+}
+
+.cv-account-menu[data-hovered],
+.cv-account-menu[data-pressed],
+.cv-account-menu[aria-expanded="true"] {
+  background: var(--cv-bg-interactive-hover);
+  color: var(--cv-text-emphasis);
+}
+
+.cv-account-menu[data-focus-visible] {
+  box-shadow: 0 0 0 2px var(--cv-ring-focus);
+}
+
+.cv-account-menu__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cv-account-menu__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-account-menu__more {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--cv-text-default);
+}
+
+.cv-account-menu__popover {
+  width: max(var(--trigger-width), 240px);
+}
+
+.cv-account-menu__description {
+  padding: var(--cv-space-3);
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+  overflow-wrap: anywhere;
+}
+
+.cv-theme-section {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  margin: 0 4px;
+  padding: 0 2px 0 10px;
+}
+
+.cv-theme-section__label {
+  flex: 1;
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+}
+
+/* The standalone control (outside a menu, e.g. `MobileNav`). */
+
+.cv-theme-switch {
+  display: inline-flex;
+}
+
+/* The options render as one segmented control. */
+
+.cv-theme-option {
+  display: grid;
+  place-items: center;
+  height: 32px;
+  padding: 3px 1px;
+  border-top: 1px solid var(--cv-border-interactive);
+  border-bottom: 1px solid var(--cv-border-interactive);
+  background: var(--cv-bg-interactive);
+  color: var(--cv-text-default);
+  cursor: pointer;
+  outline: none;
+}
+
+.cv-theme-option:first-of-type {
+  padding-left: 3px;
+  border-left: 1px solid var(--cv-border-interactive);
+  border-radius: 10px 0 0 10px;
+}
+
+.cv-theme-option:last-child {
+  padding-right: 3px;
+  border-right: 1px solid var(--cv-border-interactive);
+  border-radius: 0 10px 10px 0;
+}
+
+.cv-theme-option__swatch {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--cv-radius-lg);
+  transition-property: color, background-color, box-shadow;
+  transition-duration: var(--cv-duration);
+  transition-timing-function: var(--cv-ease);
+}
+
+.cv-theme-option__swatch svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cv-theme-option[data-focused] .cv-theme-option__swatch {
+  color: var(--cv-text-emphasis);
+}
+
+.cv-theme-option[data-selected] .cv-theme-option__swatch {
+  background: var(--cv-bg-interactive-hover);
+  color: var(--cv-text-emphasis);
+}
+
+.cv-theme-option[data-focus-visible] .cv-theme-option__swatch {
+  box-shadow: 0 0 0 2px var(--cv-ring-focus);
+}

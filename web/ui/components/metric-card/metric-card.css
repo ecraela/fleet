@@ -1,0 +1,114 @@
+.cv-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--cv-space-4);
+  margin: 0;
+  min-width: 0;
+}
+.cv-metric-grid[data-columns="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.cv-metric-card {
+  min-width: 0;
+  padding: var(--cv-space-5);
+  border: 1px solid var(--cv-border-default);
+  border-radius: var(--cv-radius-2xl);
+  background: var(--cv-bg-panel);
+}
+.cv-metric-card dd {
+  margin: 0;
+}
+.cv-metric-card__label {
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+}
+.cv-metric-card__value {
+  padding-top: var(--cv-space-2);
+  color: var(--cv-text-emphasis);
+  font-size: var(--cv-text-display);
+  line-height: var(--cv-text-display-lh);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--cv-tracking-display);
+  overflow-wrap: anywhere;
+}
+.cv-metric-card[data-unavailable] .cv-metric-card__value {
+  font-size: var(--cv-text-lg);
+  color: var(--cv-text-default);
+}
+.cv-metric-card__description {
+  padding-top: var(--cv-space-2);
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-xs);
+  line-height: var(--cv-text-xs-lh);
+}
+.cv-metric-card__history {
+  padding-top: var(--cv-space-4);
+}
+.cv-sparkline svg {
+  display: block;
+  width: 100%;
+  height: 64px;
+  color: var(--cv-series-color);
+}
+.cv-sparkline__area {
+  fill: currentColor;
+  opacity: 0.1;
+}
+.cv-sparkline__empty {
+  display: flex;
+  align-items: center;
+  height: 64px;
+  font-size: var(--cv-text-xs);
+  color: var(--cv-text-default);
+}
+@media (max-width: 1100px) {
+  .cv-metric-grid,
+  .cv-metric-grid[data-columns="3"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .cv-metric-grid,
+  .cv-metric-grid[data-columns="3"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.cv-sparkline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cv-space-1);
+  min-width: 0;
+}
+.cv-sparkline[data-compact] {
+  width: 80px;
+}
+.cv-sparkline[data-compact][data-has-summary] {
+  display: grid;
+  grid-template-columns: max-content 80px;
+  align-items: center;
+  column-gap: var(--cv-space-2);
+  width: max-content;
+}
+.cv-sparkline[data-compact] svg,
+.cv-sparkline[data-compact] .cv-sparkline__empty {
+  width: 80px;
+  height: 24px;
+}
+.cv-sparkline[data-compact] .cv-sparkline__description {
+  grid-column: 1 / -1;
+  max-width: 240px;
+  white-space: normal;
+}
+.cv-sparkline__summary {
+  color: var(--cv-text-emphasis);
+  font-size: var(--cv-text-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.cv-sparkline__description {
+  font-size: var(--cv-text-xs);
+  color: var(--cv-text-default);
+}

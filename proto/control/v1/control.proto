@@ -1,0 +1,185 @@
+syntax = "proto3";
+
+package converge.haproxy.control.v1;
+option go_package = "github.com/ecraela/fleet/internal/controlv1";
+
+// Node identity comes exclusively from the verified client certificate.
+service Control {
+  rpc Connect(stream AgentReport) returns (stream ManagerFrame);
+}
+
+message Proxy {
+  string name = 1;
+  string kind = 2;
+  string mode = 3;
+  string algorithm = 4;
+  string status = 5;
+  optional uint32 active_connections = 6;
+}
+message BackendServer {
+  string backend = 1;
+  string name = 2;
+  string address = 3;
+  string state = 4;
+  uint32 weight = 5;
+  uint32 initial_weight = 6;
+  uint32 active_connections = 7;
+  string health = 8;
+  uint32 admin_flags = 9;
+  string check_status = 10;
+}
+message ConfigurationServer {
+ string name = 1;
+ string address = 2;
+ uint32 port = 3;
+ uint32 weight = 4;
+ bool maintenance = 5;
+ bool forward_incoming_port = 6;
+}
+message ConfigurationBackend {
+ string name = 1;
+ string algorithm = 2;
+ repeated ConfigurationServer servers = 3;
+}
+message HTTPApplication {
+ string id = 1;
+ string name = 2;
+ string listener = 3;
+ string hostname = 4;
+ string path_prefix = 5;
+ string algorithm = 6;
+ repeated ConfigurationServer servers = 7;
+ string health_path = 8;
+ bool disabled = 9;
+ ApplicationVerificationPolicy verification = 10;
+ bool request_telemetry = 11;
+ TrafficPolicy traffic_policy = 12;
+}
+message TrafficRule {
+ string id = 1;
+ string name = 2;
+ string action = 3;
+ string path_prefix = 4;
+ repeated string cidrs = 5;
+ repeated string countries = 6;
+ repeated uint32 asns = 7;
+}
+message TrafficPolicy { string mode = 1; string unknown_action = 2; repeated TrafficRule rules = 3; uint32 version = 4; }
+message TrafficCapabilities { string profile = 1; string client_source = 2; bool country_ready = 3; bool asn_ready = 4; }
+message ApplicationVerificationPolicy { bool http = 1; bool https = 2; bool entrypoint = 3; }
+message ApplicationProbeGrant {
+ string name = 1;
+ string scope = 2;
+ string listener = 3;
+ string hostname = 4;
+ string path_prefix = 5;
+ string path = 6;
+ string scheme = 7;
+ uint32 expected_status = 8;
+ string policy_digest = 9;
+}
+message ListenerBinding { string name = 1; string address = 2; uint32 port = 3; }
+message HTTPSListener { string name = 1; string address = 2; uint32 port = 3; string certificate_ref = 4; string certificate_sha256 = 5; map<string,string> node_certificates = 6; }
+message TLSCertificate { string reference = 1; string sha256 = 2; repeated string dns_names = 3; int64 not_before_ms = 4; int64 not_after_ms = 5; string error_code = 6; }
+message TLSListenerObservation { string name = 1; string sha256 = 2; bool loaded = 3; }
+message ApplicationProbe {
+ string application_id = 1;
+ string spec_digest = 2;
+ string name = 3;
+ string scheme = 4;
+ string path = 5;
+ uint32 expected_status = 6;
+ uint32 status_code = 7;
+ int64 observed_at_ms = 8;
+ int64 duration_ms = 9;
+ string error_code = 10;
+ bool tls_verified = 11;
+ string certificate_sha256 = 12;
+ int64 certificate_not_after_ms = 13;
+ string scope = 14;
+ string policy_digest = 15;
+ string artifact_id = 16;
+ string generation = 17;
+}
+message ConfigurationDocument { repeated ConfigurationBackend backends = 1; repeated HTTPApplication applications = 2; repeated HTTPSListener listeners = 3; }
+message ACMEChallenge { string hostname = 1; string target = 2; }
+message ACMEGrant { string issuer = 1; string listener = 2; string environment = 3; repeated ACMEChallenge challenges = 4; string policy_digest = 5; }
+message ConfigurationState {
+ int64 version = 1;
+ string artifact_id = 2;
+ ConfigurationDocument document = 3;
+ int64 observed_at_ms = 4;
+ bool control_allowed = 5;
+ string error_code = 6;
+ uint32 application_control_version = 7;
+ uint32 listener_control_version = 8;
+ repeated ListenerBinding listener_bindings = 9;
+ repeated TLSCertificate tls_certificates = 10;
+ repeated TLSListenerObservation tls_listeners = 11;
+ string node_id = 12;
+ repeated ACMEGrant acme_grants = 13;
+ bool request_logs_allowed = 14;
+ TrafficCapabilities traffic_rules = 15;
+}
+message AgentBuild {
+  string version = 1;
+  string revision = 2;
+  string platform = 3;
+  uint32 protocol = 4;
+  string executable_sha256 = 5;
+}
+message SetupCheck { string name = 1; string status = 2; string code = 3; }
+message NodeSetup { int64 observed_at_ms = 1; string owner = 2; repeated SetupCheck checks = 3; }
+message Discovery {
+  string version = 1;
+  string process_id = 2;
+  int64 started_at = 3;
+  string config_fingerprint = 4;
+  string generation = 5;
+  bool control_allowed = 6;
+  int64 observed_at_ms = 7;
+  string error_code = 8;
+  repeated Proxy proxies = 9;
+  repeated BackendServer servers = 10;
+  uint32 config_files = 11;
+  ConfigurationState configuration = 12;
+  repeated ApplicationProbe application_probes = 13;
+  repeated ApplicationProbeGrant application_probe_grants = 14;
+  AgentBuild agent = 15;
+  NodeSetup setup = 16;
+}
+message Command {
+  string id = 1;
+  string kind = 2;
+  string backend = 3;
+  string server = 4;
+  uint32 weight = 5;
+  string expected_generation = 6;
+  string expected_state = 7;
+  uint32 expected_weight = 8;
+  int64 deadline_ms = 9;
+  string configuration_revision_id = 10;
+  ConfigurationDocument configuration = 11;
+  string base_artifact_id = 12;
+  int64 base_version = 13;
+  string rollback_artifact_id = 14;
+  string expected_process_id = 15;
+}
+message OperationResult {
+  string operation_id = 1;
+  string outcome = 2;
+  string error_code = 3;
+  Discovery discovery = 4;
+  string command_digest = 5;
+}
+message AgentReport {
+  Discovery discovery = 1;
+  OperationResult result = 2;
+  string session_id = 3;
+}
+message ManagerFrame {
+  string session_id = 1;
+  Command command = 2;
+  string ack_id = 3;
+  bool management_enabled = 4;
+}

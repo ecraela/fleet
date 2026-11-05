@@ -1,0 +1,121 @@
+.cv-steps {
+  position: relative;
+  margin: 0;
+  padding: 72px 0 0;
+  list-style: none;
+  font-family: var(--cv-font-sans);
+}
+
+.cv-steps::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--cv-border-default) 72px,
+    var(--cv-border-default) calc(100% - 96px),
+    transparent
+  );
+}
+
+.cv-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  padding-bottom: 72px;
+}
+
+.cv-step__marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  margin-top: 7px;
+  border: 2px solid var(--gray-6);
+  border-radius: 999px;
+  background: var(--cv-bg);
+}
+
+.cv-step[data-status="current"] .cv-step__marker {
+  border-color: var(--cv-text-emphasis);
+}
+
+.cv-step[data-status="complete"] .cv-step__marker {
+  border-color: var(--cv-accent);
+  background: var(--cv-accent);
+  color: var(--cv-on-accent);
+}
+
+.cv-step__marker svg {
+  width: 9px;
+  height: 9px;
+}
+
+.cv-step__title {
+  margin: 0;
+  color: var(--cv-text-emphasis);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.cv-step[data-status="upcoming"] .cv-step__title {
+  color: var(--cv-text-subtle);
+}
+
+.cv-step__description {
+  margin: 6px 0 0;
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+}
+
+.cv-step[data-status="upcoming"] .cv-step__description {
+  color: var(--cv-text-muted);
+}
+
+.cv-step__content {
+  margin-top: 24px;
+}
+
+.cv-steps--compact {
+  padding-top: 0;
+}
+
+.cv-steps--compact::before {
+  top: var(--cv-space-2);
+  bottom: var(--cv-space-2);
+  background: var(--cv-border-default);
+}
+
+.cv-steps--compact .cv-step {
+  grid-template-columns: var(--cv-space-8) minmax(0, 1fr);
+  padding-bottom: var(--cv-space-5);
+}
+
+.cv-steps--compact .cv-step:last-child {
+  padding-bottom: 0;
+}
+
+.cv-steps--compact .cv-step__title {
+  font-size: var(--cv-text-base);
+  line-height: var(--cv-text-base-lh);
+}
+
+.cv-steps--compact .cv-step__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cv-space-4);
+  min-width: 0;
+  margin-top: var(--cv-space-3);
+}
+
+.cv-steps--compact .cv-step[data-status="upcoming"] .cv-step__description {
+  display: none;
+}

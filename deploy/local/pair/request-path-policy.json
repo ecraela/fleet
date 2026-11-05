@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "mode": "sanitized",
+  "routes": [
+    "/shop/items",
+    "/shop/items/:id",
+    "/shop/node-check",
+    "/shop/admin/v2/users",
+    "/shop/admin/v2/users/:id",
+    "/shop/admin/v2/node-check"
+  ]
+}

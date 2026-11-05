@@ -1,0 +1,6 @@
+# Optional standalone browser console. Apply to compose.yaml without the
+# Converge federation overlay. Secure cookies and HTTPS are the default.
+services:
+  manager:
+    environment:
+      HAPROXY_LOCAL_ORIGIN: ${HAPROXY_LOCAL_ORIGIN:-https://localhost:18443}

@@ -1,0 +1,23 @@
+.cv-loading-status {
+  display: flex;
+  align-items: center;
+  gap: var(--cv-space-2);
+  color: var(--cv-text-default);
+  font-family: var(--cv-font-sans);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+}
+
+.cv-loading-status__spinner {
+  flex-shrink: 0;
+  animation: cv-loading-status-spin 1s linear infinite;
+}
+
+@keyframes cv-loading-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cv-loading-status[data-waiting] {
+  visibility: hidden;
+}

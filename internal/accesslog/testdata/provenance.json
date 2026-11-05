@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/maxmind/MaxMind-DB",
+  "revision": "d1551916cff0712d12ff602c309234471b0402a2",
+  "purpose": "Small synthetic Country and ASN fixtures for tests and the local demo; not production geolocation data.",
+  "license": "MIT (upstream dual-license option)",
+  "sha256": {
+    "GeoIP2-Country-Test.mmdb": "fc12d6470b35b70bd3e4534dd433d3e262a6c73f7682f85c344e832d4190f02b",
+    "GeoLite2-ASN-Test.mmdb": "a0f9e8614ad582ba1af3eeb18ead666f73ad6e4cbd5280f80d5d4d95bbe6c3f1"
+  }
+}

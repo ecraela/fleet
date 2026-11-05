@@ -1,0 +1,225 @@
+name: converge-haproxy
+
+x-runtime: &runtime
+  image: converge-haproxy:local
+  build:
+    context: .
+  user: "${HAPROXY_UID:-10001}:${HAPROXY_GID:-10001}"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ["/tmp:size=16m,mode=1777"]
+
+services:
+  init:
+    <<: *runtime
+    profiles: [tools]
+    command:
+      - init
+      - --state-dir
+      - /bootstrap
+      - --dns-name
+      - manager
+      - --dns-name
+      - ingest
+      - --dns-name
+      - localhost
+      - --ip
+      - 127.0.0.1
+    volumes:
+      - ./deploy/local/state.local:/bootstrap
+
+  postgres:
+    image: postgres:18.6-alpine3.24
+    environment:
+      POSTGRES_DB: haproxy_manager
+      POSTGRES_USER: haproxy_manager
+      POSTGRES_PASSWORD: ${HAPROXY_DB_PASSWORD:-bootstrap-required}
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U haproxy_manager -d haproxy_manager]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 256m
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.154.1
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=2d
+      - -memory.allowedPercent=15
+      - -search.maxConcurrentRequests=4
+      - -search.maxQueryDuration=5s
+      - -inmemoryDataFlushInterval=1s
+    environment:
+      GOMEMLIMIT: 256MiB
+      GOMAXPROCS: 2
+    volumes:
+      - metrics:/storage
+    mem_limit: 512m
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=2d
+      - -retention.maxDiskSpaceUsageBytes=1GiB
+      - -memory.allowedBytes=32MiB
+      - -search.maxConcurrentRequests=4
+      - -search.maxQueryDuration=2s
+      - -inmemoryDataFlushInterval=1s
+    environment:
+      GOMEMLIMIT: 128MiB
+      GOMAXPROCS: 1
+    volumes:
+      - request-logs:/storage
+    mem_limit: 256m
+
+  manager:
+    <<: *runtime
+    command:
+      - serve
+      - --role
+      - manager
+      - --migrate
+      - --listen
+      - :8443
+      - --pki-dir
+      - /pki
+      - --tls-cert
+      - /pki/server.crt
+      - --tls-key
+      - /pki/server.key
+      - --admin-token-file
+      - /run/secrets/admin-token
+      - --metrics-url
+      - http://victoriametrics:8428
+    environment:
+      HAPROXY_DATABASE_URL: postgres://haproxy_manager:${HAPROXY_DB_PASSWORD:-bootstrap-required}@postgres:5432/haproxy_manager?sslmode=disable
+      HAPROXY_LOGS_URL: http://victorialogs:9428
+      HAPROXY_ORGANIZATION_ID: ${HAPROXY_ORGANIZATION_ID:-00000000-0000-0000-0000-000000000000}
+      GOMEMLIMIT: 192MiB
+    volumes:
+      - ./deploy/local/state.local/pki:/pki:ro
+      - ./deploy/local/state.local/admin-token:/run/secrets/admin-token:ro
+    ports: [127.0.0.1:18443:8443]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      victoriametrics:
+        condition: service_started
+      victorialogs:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          CMD,
+          curl,
+          --fail,
+          --silent,
+          --cacert,
+          /pki/ca.crt,
+          https://localhost:8443/healthz,
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 256m
+
+  ingest:
+    <<: *runtime
+    command:
+      - serve
+      - --role
+      - ingest
+      - --listen
+      - :8443
+      - --pki-dir
+      - /pki
+      - --tls-cert
+      - /pki/server.crt
+      - --tls-key
+      - /pki/server.key
+      - --metrics-url
+      - http://victoriametrics:8428
+    environment:
+      HAPROXY_DATABASE_URL: postgres://haproxy_manager:${HAPROXY_DB_PASSWORD:-bootstrap-required}@postgres:5432/haproxy_manager?sslmode=disable
+      HAPROXY_LOGS_URL: http://victorialogs:9428
+      GOMEMLIMIT: 192MiB
+    volumes:
+      - ./deploy/local/state.local/pki/ca.crt:/pki/ca.crt:ro
+      - ./deploy/local/state.local/pki/server.crt:/pki/server.crt:ro
+      - ./deploy/local/state.local/pki/server.key:/pki/server.key:ro
+    ports: [127.0.0.1:19443:8443]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      victoriametrics:
+        condition: service_started
+    mem_limit: 256m
+
+  demo-backend:
+    <<: *runtime
+    entrypoint: [/usr/local/bin/demo-backend]
+    mem_limit: 32m
+
+  haproxy:
+    image: haproxy:3.4.7-alpine3.24
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [haproxy, -W, -db, -f, /usr/local/etc/haproxy/haproxy.cfg]
+    volumes:
+      - ./deploy/local/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports: [127.0.0.1:18080:8080]
+    depends_on: [demo-backend]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8404/metrics]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 128m
+
+  agent:
+    <<: *runtime
+    entrypoint: [/usr/local/bin/haproxy-agent]
+    command:
+      - --server-url
+      - https://manager:8443
+      - --ingest-url
+      - https://ingest:8443
+      - --server-ca
+      - /run/haproxy/ca.crt
+      - --enrollment-token-file
+      - /run/secrets/enrollment-token
+      - --state-dir
+      - /var/lib/haproxy-agent
+      - --name
+      - local-demo
+      - --metrics-url
+      - http://haproxy:8404/metrics
+      - --interval
+      - 1s
+    environment:
+      GOMEMLIMIT: 64MiB
+      GOMAXPROCS: 1
+    volumes:
+      - ./deploy/local/state.local/pki/ca.crt:/run/haproxy/ca.crt:ro
+      - ./deploy/local/state.local/enrollment-token:/run/secrets/enrollment-token:ro
+      - ./deploy/local/state.local/agent:/var/lib/haproxy-agent
+    depends_on:
+      manager:
+        condition: service_healthy
+      ingest:
+        condition: service_started
+      haproxy:
+        condition: service_healthy
+    mem_limit: 96m
+
+volumes:
+  postgres:
+  metrics:
+  request-logs:

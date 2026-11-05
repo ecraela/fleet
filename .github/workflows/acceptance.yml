@@ -1,0 +1,192 @@
+name: HAProxy acceptance and hardening
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Acceptance suite to repeat
+        type: choice
+        options: [all, verify, hardening, maintenance]
+        default: all
+
+concurrency:
+  group: haproxy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Two-node application acceptance
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:18.6-alpine3.24
+        env:
+          POSTGRES_DB: haproxy_manager_test
+          POSTGRES_USER: haproxy_manager
+          POSTGRES_PASSWORD: isolated-ci-database
+        ports: ["55433:5432"]
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U haproxy_manager -d haproxy_manager_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+      metrics:
+        image: victoriametrics/victoria-metrics:v1.154.1
+        ports: ["58428:8428"]
+    env:
+      HAPROXY_TEST_DATABASE_URL: postgres://haproxy_manager:isolated-ci-database@localhost:55433/haproxy_manager_test?sslmode=disable
+      HAPROXY_TEST_METRICS_URL: http://localhost:58428
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24.19.0
+      - name: Install pinned frontend toolchain
+        run: |
+          npm install --global pnpm@11.25.0
+          make web-install
+      - name: Audit frontend dependencies
+        run: make web-audit
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.10
+          cache-dependency-path: go.sum
+      - name: Check, test and build
+        run: make check test build
+      - name: Check reachable Go vulnerabilities
+        run: make vuln
+      - name: Real HAProxy enrollment and metrics smoke
+        run: make demo
+      - name: Ingestion outage and recovery smoke
+        run: make outage
+      - name: Real two-node traffic and failover
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/pair.py up && python3 scripts/pair.py failover
+      - name: Direct runtime drain, restore, weights and reconnect
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/pair.py operations
+      - name: Persistent backend configuration and rollback
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/configuration.py
+      - name: Rolling maintenance, restart, rollback and drain timeout
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/rollout.py
+      - name: Whole-node maintenance, drain, restarts and rejoin
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/maintenance.py
+      - name: Live metrics arrive within five seconds
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/pair.py latency
+      - name: Shared-listener applications and app-scoped rollback
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/applications.py
+      - name: HTTPS listeners, rolling certificate rotation and rollback
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/listeners.py
+      - name: Application entrypoint health, isolated failure and recovery
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/probes.py
+      - name: Node-local DNS-01 issuance and rolling renewal
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/acme.py up && python3 scripts/acme.py smoke
+      - name: Application disable, re-enable, delete and restore with shared TLS
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/application_lifecycle.py
+      - name: Application-aware HTTP and HTTPS rollout rollback
+        env:
+          HAPROXY_PAIR_STANDALONE: "1"
+        run: python3 scripts/application_verification.py
+      - name: Capture isolated demo logs on failure
+        if: failure()
+        run: |
+          make logs
+          if [ -f deploy/local/state.local/pair/operators.json ]; then
+            python3 scripts/pair.py logs
+          fi
+      - name: Stop isolated demo
+        if: always()
+        run: |
+          if [ -f deploy/local/state.local/pair/active-organization ]; then
+            PYTHONPATH=scripts HAPROXY_PAIR_STANDALONE=1 python3 -c 'from pair import compose; compose("down", "--volumes", "--remove-orphans")'
+          elif [ -f deploy/local/state.local/compose.env ]; then
+            docker compose --env-file deploy/local/state.local/compose.env down --volumes --remove-orphans
+          else
+            docker compose down --volumes
+          fi
+
+  hardening:
+    name: Load, failures and recovery with real node keys
+    if: github.event_name != 'workflow_dispatch' || inputs.suite == 'all' || inputs.suite == 'hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      HAPROXY_PAIR_STANDALONE: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Prepare real two-app HTTP/HTTPS and DNS-01 demo
+        run: |
+          python3 scripts/prepare_release_lab.py
+          python3 scripts/requests.py
+      - name: Node-local Geo, trusted forwarding, database failure and recovery
+        run: make geography
+      - name: Application IP, country and ASN rules, spoof resistance and rollback
+        run: make traffic-rules
+      - name: Recovery safety guards
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Sustained traffic, component failures and isolated fresh-storage restore
+        run: python3 scripts/hardening.py all --seconds 60 --rps 80 --workers 8 --live-metrics
+      - name: Retain sanitized measurements only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: haproxy-hardening-measurements
+          path: deploy/local/state.local/hardening/latest.json
+          if-no-files-found: ignore
+      - name: Stop isolated source demo
+        if: always()
+        run: |
+          if [ -f deploy/local/state.local/pair/active-organization ]; then
+            PYTHONPATH=scripts python3 -c 'from pair import compose; compose("down", "--volumes", "--remove-orphans")'
+          fi
+
+  maintenance:
+    name: Focused whole-node maintenance and restart recovery
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'maintenance'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      HAPROXY_PAIR_STANDALONE: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Prepare isolated HAProxy pair
+        run: python3 scripts/pair.py up
+      - name: Withdraw, restart, reject unhealthy rejoin and restore traffic
+        run: python3 scripts/maintenance.py
+      - name: Capture isolated demo logs on failure
+        if: failure()
+        run: python3 scripts/pair.py logs
+      - name: Stop isolated source demo
+        if: always()
+        run: |
+          if [ -f deploy/local/state.local/pair/active-organization ]; then
+            PYTHONPATH=scripts python3 -c 'from pair import compose; compose("down", "--volumes", "--remove-orphans")'
+          fi

@@ -1,0 +1,32 @@
+[Unit]
+Description=Converge HAProxy observation agent
+Wants=network-online.target
+After=network-online.target haproxy.service
+
+[Service]
+Type=simple
+User=haproxy-agent
+Group=haproxy-agent
+StateDirectory=haproxy-agent
+StateDirectoryMode=0700
+Environment=GOMEMLIMIT=64MiB
+Environment=GOMAXPROCS=1
+ExecStart=/usr/local/bin/haproxy-agent --server-url https://manager.example.com --ingest-url https://ingest.example.com --server-ca /etc/haproxy-agent/ca.crt --enrollment-token-file /etc/haproxy-agent/enrollment-token --state-dir /var/lib/haproxy-agent --name %H --metrics-url http://127.0.0.1:8404/metrics --interval 1s
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=96M
+CPUQuota=20%
+
+[Install]
+WantedBy=multi-user.target

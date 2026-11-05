@@ -1,0 +1,232 @@
+.cv-avatar {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--cv-border-interactive);
+  background: var(--cv-bg-interactive);
+  color: var(--cv-text-default);
+  font-family: var(--cv-font-sans);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.cv-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cv-avatar--24 {
+  width: 24px;
+  height: 24px;
+  font-size: 9px;
+}
+
+.cv-avatar--32 {
+  width: 32px;
+  height: 32px;
+  font-size: 11px;
+}
+
+.cv-avatar--40 {
+  width: 40px;
+  height: 40px;
+  font-size: 13px;
+}
+
+.cv-avatar--80 {
+  width: 80px;
+  height: 80px;
+  font-size: 28px;
+}
+
+.cv-avatar--circle {
+  border-radius: 999px;
+}
+
+/* Squares mark organizations and providers: one initial, rounder corners. */
+
+.cv-avatar--square {
+  border-radius: var(--cv-radius-lg);
+  letter-spacing: 0;
+}
+
+.cv-avatar--square.cv-avatar--24 {
+  font-size: 12px;
+}
+
+.cv-avatar--square.cv-avatar--32 {
+  font-size: 14px;
+}
+
+.cv-avatar--square.cv-avatar--40 {
+  border-radius: var(--cv-radius-xl);
+  font-size: 16px;
+}
+
+.cv-avatar--square.cv-avatar--80 {
+  border-radius: 22px;
+}
+
+/* Tinted: a soft gradient whose hue is derived from a stable seed. */
+
+.cv-avatar--tinted {
+  --cv-avatar-strong: var(--gray-a4);
+  --cv-avatar-weak: var(--gray-a2);
+  --cv-avatar-line: var(--gray-a4);
+  --cv-avatar-ink: var(--cv-text-emphasis);
+  border-color: var(--cv-avatar-line);
+  background: linear-gradient(
+    160deg,
+    var(--cv-avatar-strong),
+    var(--cv-avatar-weak)
+  );
+  color: var(--cv-avatar-ink);
+  font-weight: 700;
+}
+
+.cv-avatar--tinted[data-hue="blue"] {
+  --cv-avatar-strong: var(--blue-a6);
+  --cv-avatar-weak: var(--blue-a2);
+  --cv-avatar-line: var(--blue-a5);
+  --cv-avatar-ink: var(--blue-a12);
+}
+
+.cv-avatar--tinted[data-hue="green"] {
+  --cv-avatar-strong: var(--green-a6);
+  --cv-avatar-weak: var(--green-a2);
+  --cv-avatar-line: var(--green-a5);
+  --cv-avatar-ink: var(--green-a12);
+}
+
+.cv-avatar--tinted[data-hue="amber"] {
+  --cv-avatar-strong: var(--amber-a6);
+  --cv-avatar-weak: var(--amber-a2);
+  --cv-avatar-line: var(--amber-a5);
+  --cv-avatar-ink: var(--amber-a12);
+}
+
+.cv-avatar--tinted[data-hue="red"] {
+  --cv-avatar-strong: var(--red-a6);
+  --cv-avatar-weak: var(--red-a2);
+  --cv-avatar-line: var(--red-a5);
+  --cv-avatar-ink: var(--red-a12);
+}
+
+.cv-avatar--tinted[data-hue="orange"] {
+  --cv-avatar-strong: var(--orange-a6);
+  --cv-avatar-weak: var(--orange-a2);
+  --cv-avatar-line: var(--orange-a5);
+  --cv-avatar-ink: var(--orange-a12);
+}
+
+.cv-avatar--tinted[data-hue="teal"] {
+  --cv-avatar-strong: var(--teal-a6);
+  --cv-avatar-weak: var(--teal-a2);
+  --cv-avatar-line: var(--teal-a5);
+  --cv-avatar-ink: var(--teal-a12);
+}
+
+.cv-avatar--tinted[data-hue="violet"] {
+  --cv-avatar-strong: var(--violet-a6);
+  --cv-avatar-weak: var(--violet-a2);
+  --cv-avatar-line: var(--violet-a5);
+  --cv-avatar-ink: var(--violet-a12);
+}
+
+.cv-avatar--tinted[data-hue="pink"] {
+  --cv-avatar-strong: var(--pink-a6);
+  --cv-avatar-weak: var(--pink-a2);
+  --cv-avatar-line: var(--pink-a5);
+  --cv-avatar-ink: var(--pink-a12);
+}
+
+/* Picker ----------------------------------------------------------------- */
+
+.cv-avatar-picker {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: center;
+  gap: 12px;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--cv-radius-2xl);
+  background: transparent;
+  color: var(--cv-text-default);
+  font: inherit;
+  font-family: var(--cv-font-sans);
+  font-size: var(--cv-text-sm);
+  font-weight: 600;
+  line-height: var(--cv-text-sm-lh);
+  cursor: pointer;
+  outline: none;
+  transition: color var(--cv-duration) var(--cv-ease);
+}
+
+.cv-avatar-picker[data-hovered] {
+  color: var(--cv-text-emphasis);
+}
+
+.cv-avatar-picker[data-focus-visible] {
+  box-shadow: 0 0 0 2px var(--cv-ring-focus);
+}
+
+.cv-avatar-picker .cv-avatar {
+  transition: transform var(--cv-duration) var(--cv-ease);
+}
+
+.cv-avatar-picker[data-hovered] .cv-avatar {
+  transform: translateY(-1px);
+}
+
+/* Color picker ----------------------------------------------------------- */
+
+.cv-avatar-color-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cv-avatar-color-picker__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  outline: none;
+}
+
+.cv-avatar-color-picker__item {
+  display: grid;
+  border-radius: var(--cv-radius-lg);
+  outline: none;
+  cursor: pointer;
+}
+
+.cv-avatar-color-picker__item .cv-avatar {
+  transition:
+    transform var(--cv-duration) var(--cv-ease),
+    border-color var(--cv-duration) var(--cv-ease);
+}
+
+.cv-avatar-color-picker__item[data-hovered] .cv-avatar {
+  transform: translateY(-1px);
+}
+
+.cv-avatar-color-picker__item[data-selected] .cv-avatar {
+  border-color: var(--cv-avatar-ink);
+}
+
+.cv-avatar-color-picker__item[data-focus-visible] {
+  box-shadow: 0 0 0 2px var(--cv-ring-focus);
+}
+
+.cv-avatar-color-picker__item svg {
+  width: 15px;
+  height: 15px;
+}

@@ -1,0 +1,17 @@
+.cv-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 4px;
+  border-radius: var(--cv-radius-md);
+  background: var(--cv-bg-interactive-hover);
+  color: var(--cv-text-default);
+  font-family: var(--cv-font-sans);
+  font-size: var(--cv-text-xs);
+  font-weight: 400;
+  line-height: var(--cv-text-xs-lh);
+  font-variant-emoji: text;
+  user-select: none;
+}

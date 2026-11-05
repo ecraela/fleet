@@ -1,0 +1,197 @@
+.cv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--cv-font-sans);
+}
+
+.cv-field__label {
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+}
+
+.cv-field__description {
+  color: var(--cv-text-subtle);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cv-field__error {
+  color: var(--cv-text-error);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cv-field__control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.cv-input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid var(--cv-border-interactive);
+  border-radius: var(--cv-radius-xl);
+  background: var(--cv-bg-interactive);
+  color: var(--cv-text-emphasis);
+  font: inherit;
+  font-size: var(--cv-text-field);
+  line-height: var(--cv-text-field-lh);
+  outline: none;
+  appearance: none;
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--cv-duration);
+  transition-timing-function: var(--cv-ease);
+}
+
+.cv-input::placeholder {
+  color: var(--cv-text-placeholder);
+  opacity: 1;
+}
+
+.cv-input::-webkit-search-cancel-button,
+.cv-input::-webkit-search-decoration {
+  display: none;
+  appearance: none;
+}
+
+.cv-input[data-focused] {
+  box-shadow: 0 0 0 2px var(--cv-ring-field);
+}
+
+.cv-input[data-invalid] {
+  border-color: var(--cv-border-error);
+  background: var(--cv-bg-error);
+}
+
+.cv-input[data-invalid][data-focused] {
+  box-shadow: 0 0 0 2px var(--cv-border-error-subtle);
+}
+
+.cv-input[data-disabled] {
+  color: var(--cv-text-default);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.cv-input[readonly] {
+  background: var(--cv-bg-interactive-hover);
+  cursor: default;
+}
+
+.cv-textarea {
+  height: auto;
+  min-height: 80px;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.cv-field__control[data-leading] .cv-input {
+  padding-left: 34px;
+}
+
+.cv-field__control[data-trailing] .cv-input {
+  padding-right: 36px;
+}
+
+.cv-field__slot {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--cv-text-default);
+  transform: translateY(-50%);
+}
+
+.cv-field__slot svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cv-field__slot--leading {
+  left: 10px;
+  pointer-events: none;
+}
+
+.cv-field__slot--trailing {
+  right: 4px;
+  width: 24px;
+  height: 24px;
+}
+
+.cv-field__status {
+  border-radius: var(--cv-radius-lg);
+  color: var(--cv-text-error);
+  transition: background-color var(--cv-duration) var(--cv-ease);
+}
+
+.cv-field__status[data-active] {
+  background: var(--cv-bg-interactive-hover);
+}
+
+/*
+ * Suffix: the control, not the input, draws the border so the static text
+ * sits inside it after the value and the whole thing focuses as one field.
+ */
+
+.cv-field__control[data-suffix] {
+  border: 1px solid var(--cv-border-interactive);
+  border-radius: var(--cv-radius-xl);
+  background: var(--cv-bg-interactive);
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: var(--cv-duration);
+  transition-timing-function: var(--cv-ease);
+}
+
+.cv-field__control[data-suffix] .cv-input {
+  flex: 1 1 0%;
+  width: auto;
+  min-width: 0;
+  padding-right: 4px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cv-field__control[data-suffix]:has(.cv-input[data-focused]) {
+  box-shadow: 0 0 0 2px var(--cv-ring-field);
+}
+
+.cv-field__control[data-suffix]:has(.cv-input[data-invalid]) {
+  border-color: var(--cv-border-error);
+  background: var(--cv-bg-error);
+}
+
+.cv-field__control[data-suffix]:has(.cv-input[data-invalid][data-focused]) {
+  box-shadow: 0 0 0 2px var(--cv-border-error-subtle);
+}
+
+.cv-field__suffix {
+  flex: 0 1 auto;
+  max-width: 60%;
+  padding-right: 12px;
+  overflow: hidden;
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-field);
+  line-height: var(--cv-text-field-lh);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.cv-field__control[data-suffix] .cv-field__slot--trailing {
+  position: static;
+  flex-shrink: 0;
+  margin-right: 4px;
+  transform: none;
+}
+
+.cv-field__control[data-suffix][data-trailing] .cv-input {
+  padding-right: 4px;
+}

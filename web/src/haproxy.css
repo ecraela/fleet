@@ -1,0 +1,44 @@
+.cv-haproxy,
+.cv-haproxy-observation,
+.cv-haproxy-runtime,
+.cv-haproxy-configuration {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cv-space-6);
+  min-width: 0;
+}
+
+.cv-haproxy-install-command .cv-code-block__pre {
+  max-height: min(28vh, calc(var(--cv-space-8) * 8));
+  overflow-y: auto;
+}
+
+.cv-haproxy-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--cv-space-8);
+}
+
+@media (max-width: 900px) {
+  .cv-haproxy-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.cv-haproxy-cluster {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--cv-space-6);
+}
+
+:is(
+    .cv-haproxy,
+    .cv-haproxy-observation,
+    .cv-haproxy-runtime,
+    .cv-haproxy-configuration,
+    .cv-haproxy-cluster
+  )
+  > :is(.cv-section, .cv-page-header) {
+  margin-block: 0;
+}

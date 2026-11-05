@@ -1,0 +1,26 @@
+.cv-country-flag {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 20px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--cv-bg-interactive);
+  object-fit: cover;
+  vertical-align: text-bottom;
+  outline: 1px solid var(--cv-border-default);
+  outline-offset: -1px;
+}
+.cv-country-flag--code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 20px;
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-xs);
+}
+.cv-country-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cv-space-2);
+}

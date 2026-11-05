@@ -1,0 +1,120 @@
+.cv-menu__popover {
+  min-width: 160px;
+}
+
+.cv-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  outline: none;
+}
+
+.cv-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 0 4px;
+  padding: 0 12px 0 10px;
+  border-radius: var(--cv-radius-xl);
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.cv-menu__item[data-hovered],
+.cv-menu__item[data-focused] {
+  background: var(--cv-bg-interactive);
+  color: var(--cv-text-emphasis);
+}
+
+.cv-menu__item--danger,
+.cv-menu__item--danger[data-hovered],
+.cv-menu__item--danger[data-focused] {
+  color: var(--cv-text-error);
+}
+
+.cv-menu__item--danger[data-hovered],
+.cv-menu__item--danger[data-focused] {
+  background: var(--cv-bg-error);
+}
+
+.cv-menu__item[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.cv-menu__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.cv-menu__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cv-menu__separator {
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: var(--cv-border-interactive);
+}
+
+.cv-menu__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.cv-menu__item--described {
+  padding-block: var(--cv-space-2);
+}
+
+.cv-menu__item--described[data-disabled] {
+  opacity: 1;
+}
+
+.cv-menu__item--described[data-disabled] [slot="label"],
+.cv-menu__item--described[data-disabled] .cv-menu__icon {
+  opacity: 0.7;
+}
+
+.cv-menu__item--described .cv-menu__label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cv-space-1);
+}
+
+.cv-menu__description {
+  max-width: 240px;
+  color: var(--cv-text-default);
+  font-size: var(--cv-text-xs);
+  line-height: var(--cv-text-xs-lh);
+  white-space: normal;
+}
+
+.cv-menu__trailing {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-left: 16px;
+  color: var(--cv-text-default);
+}
+
+.cv-menu__trailing svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cv-menu__item[data-focused] .cv-menu__trailing {
+  color: var(--cv-text-emphasis);
+}
+
+/* Items with `href` render as links; keep them looking like menu items. */
+
+.cv-menu__item {
+  text-decoration: none;
+}

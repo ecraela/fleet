@@ -1,0 +1,124 @@
+name: Fleet CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  existing-infrastructure:
+    name: Onboard existing HAProxy without changing its serving configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Build candidate and onboard already-serving nodes without Converge
+        run: make onboarding
+      - name: Retain sanitized onboarding evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: existing-infrastructure-onboarding
+          path: .build.local/onboarding/*/latest.json
+          if-no-files-found: ignore
+  self-hosted-install:
+    name: Clean standalone Linux Docker installation and recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24.19.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.10
+      - name: Install build and backup tools
+        run: |
+          npm install --global pnpm@11.25.0
+          make web-install
+          go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
+      - name: Signed install, upgrade, failed-start rollback and encrypted cold restore
+        run: python3 scripts/selfhost_smoke.py --work "$RUNNER_TEMP/haproxy-clean-install"
+      - name: Retain sanitized standalone lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: self-hosted-installation-measurements
+          path: ${{ runner.temp }}/haproxy-clean-install/latest.json
+          if-no-files-found: ignore
+  verify:
+    name: Source checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18.6-alpine3.24
+        env:
+          POSTGRES_DB: haproxy_manager_test
+          POSTGRES_USER: haproxy_manager
+          POSTGRES_PASSWORD: isolated-ci-database
+        ports: ["55433:5432"]
+        options: --health-cmd "pg_isready -h 127.0.0.1 -U haproxy_manager -d haproxy_manager_test" --health-interval 2s --health-timeout 3s --health-retries 30
+      metrics:
+        image: victoriametrics/victoria-metrics:v1.154.1
+        ports: ["58428:8428"]
+    env:
+      HAPROXY_TEST_DATABASE_URL: postgres://haproxy_manager:isolated-ci-database@localhost:55433/haproxy_manager_test?sslmode=disable
+      HAPROXY_TEST_METRICS_URL: http://localhost:58428
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24.19.0
+      - name: Install pinned frontend toolchain
+        run: |
+          npm install --global pnpm@11.25.0
+          make web-install
+      - name: Audit frontend dependencies
+        run: make web-audit
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.10
+      - run: make check test build
+      - name: Check reachable Go vulnerabilities
+        run: make vuln
+  lifecycle:
+    name: Real Docker and Linux agent lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      HAPROXY_PAIR_STANDALONE: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Prepare two applications and trusted HTTPS
+        run: python3 scripts/prepare_release_lab.py
+      - name: Standalone local login, permissions, live metrics and persisted sessions
+        run: |
+          docker tag converge-haproxy:local ecraela-haproxy-standalone:local
+          python3 scripts/standalone.py up
+          python3 scripts/standalone.py smoke --restart --traffic-seconds 15
+          python3 scripts/standalone.py down
+      - name: Signed installs, sequential upgrades and rollback under traffic
+        run: python3 scripts/agent_releases.py
+      - name: Genuine native Linux systemd install, upgrade, rollback and restart
+        run: sudo --preserve-env=GITHUB_ACTIONS,HAPROXY_PAIR_STANDALONE python3 scripts/linux_installer_smoke.py
+      - name: Save sanitized lifecycle evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: agent-lifecycle-measurements
+          path: |
+            deploy/local/state.local/pair/*/agent-releases/latest.json
+            deploy/local/state.local/pair/*/standalone-console/latest.json
+          if-no-files-found: ignore
+      - name: Stop standalone console
+        if: always()
+        run: python3 scripts/standalone.py down
+      - name: Stop isolated lab
+        if: always()
+        run: PYTHONPATH=scripts python3 -c 'from pair import compose; compose("down", "--volumes", "--remove-orphans")'

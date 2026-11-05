@@ -1,0 +1,121 @@
+.cv-tag-picker__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--cv-radius-xl);
+  background: transparent;
+  color: var(--cv-text-subtle);
+  font: inherit;
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+  cursor: pointer;
+  outline: none;
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--cv-duration);
+  transition-timing-function: var(--cv-ease);
+}
+
+.cv-tag-picker__chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.cv-tag-picker--field .cv-tag-picker__trigger {
+  justify-content: space-between;
+  width: 100%;
+  padding-inline: var(--cv-space-3) var(--cv-space-2);
+  border-color: var(--cv-border-interactive);
+  background: var(--cv-bg-interactive);
+  color: var(--cv-text-default);
+}
+
+.cv-tag-picker--field .cv-tag-picker__trigger[data-hovered],
+.cv-tag-picker--field .cv-tag-picker__trigger[data-pressed] {
+  background: var(--cv-bg-interactive-hover);
+}
+
+.cv-tag-picker__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.cv-tag-picker__trigger[data-hovered],
+.cv-tag-picker__trigger[data-pressed] {
+  background: var(--cv-bg-interactive);
+  color: var(--cv-text-emphasis);
+}
+
+.cv-tag-picker__trigger[data-focus-visible] {
+  box-shadow: 0 0 0 2px var(--cv-ring-focus);
+}
+
+.cv-tag-picker__popover {
+  width: 320px;
+  padding: 0;
+}
+
+.cv-tag-picker__search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 8px 4px;
+  background: var(--cv-bg);
+  border-bottom: 1px solid var(--cv-border-interactive);
+}
+
+.cv-tag-picker__menu {
+  padding: 4px 0;
+}
+
+.cv-tag-picker__item {
+  align-items: flex-start;
+  padding-block: 8px;
+  white-space: normal;
+}
+
+/* Selected rows keep a tint through hover and focus so the chosen set reads
+   at a glance, not only through the trailing check. */
+.cv-tag-picker__item[data-selected],
+.cv-tag-picker__item[data-selected][data-hovered],
+.cv-tag-picker__item[data-selected][data-focused] {
+  background: var(--cv-bg-interactive-hover);
+  color: var(--cv-text-emphasis);
+}
+
+/* The tint already matches the hover background, so keyboard focus on a
+   selected row needs its own indicator. */
+.cv-tag-picker__item[data-selected][data-focused] {
+  box-shadow: inset 0 0 0 1px var(--cv-ring-focus);
+}
+
+.cv-tag-picker__empty {
+  padding: 20px 12px;
+  color: var(--cv-text-subtle);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+  text-align: center;
+}
+
+.cv-tag-picker__note {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--cv-text-subtle);
+  font-size: var(--cv-text-sm);
+  line-height: var(--cv-text-sm-lh);
+  border-bottom: 1px solid var(--cv-border-interactive);
+}
+
+.cv-tag-picker__item--invalid,
+.cv-tag-picker__item--invalid[data-hovered],
+.cv-tag-picker__item--invalid[data-focused] {
+  color: var(--cv-text-error);
+  background: transparent;
+  cursor: default;
+}
