@@ -254,7 +254,17 @@ def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
                    '--manager-port', args.manager_port, '--ingest-port', args.ingest_port]
         if trust_args:
             command += ['--fixture-publisher', trust_args[1]]
-        ctl.command(command)
+        result = subprocess.run(list(map(str, command)), stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=180, check=False)
+        if result.returncode:
+            try:
+                failure = json.loads(result.stdout[:4096])
+            except ValueError:
+                failure = {}
+            message = failure.get('native_agent_error') if isinstance(failure, dict) else None
+            if isinstance(message, str):
+                raise ctl.Error('Native agent qualification failed: ' + message[:2048])
+            raise ctl.Error('Native agent worker failed before reporting a curated error')
         return
 
     def compose(*options):
@@ -299,6 +309,7 @@ def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
                       '--server-url', f'https://localhost:{args.manager_port}',
                       '--ingest-url', f'https://localhost:{args.ingest_port}',
                       '--server-ca', str(public / 'ca.crt'), '--state-dir', str(state),
+                      '--name', 'node-a',
                       '--metrics-url', f'http://{metrics}:8404/metrics', '--interval', '1s']}
         agent_lifecycle(config, work / 'native-agent.json', baseline, candidate, trust_args)
         since = time.time()
@@ -780,4 +791,10 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except ctl.Error as error:
+        if '--native-agent-worker' not in sys.argv:
+            raise
+        print(json.dumps({'native_agent_error': str(error)[:2048]}), flush=True)
+        raise SystemExit(1)

@@ -2,6 +2,7 @@ import hashlib
 import os
 from pathlib import Path
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 
@@ -9,6 +10,17 @@ import selfhost_smoke as smoke
 
 
 class NativeQualificationBoundary(unittest.TestCase):
+    def test_native_delegation_does_not_expose_raw_worker_stderr(self):
+        args = types.SimpleNamespace(manager_port=18543, ingest_port=19543)
+        release = (Path('/test/release'), {'version': 'v0.1.0'})
+        result = types.SimpleNamespace(returncode=1, stdout=b'not JSON', stderr=b'private diagnostic data')
+        with patch.object(smoke.os, 'geteuid', return_value=1000), \
+                patch.object(smoke.subprocess, 'run', return_value=result):
+            with self.assertRaisesRegex(smoke.ctl.Error, 'before reporting a curated error') as error:
+                smoke.native_agent_lifecycle(args, Path('/test'), Path('/test/customer'),
+                                             release, release, [])
+        self.assertNotIn('private diagnostic data', str(error.exception))
+
     def test_refuses_non_ci_host_before_docker_or_filesystem_changes(self):
         with tempfile.TemporaryDirectory() as temporary:
             work = Path(temporary) / 'installation'
