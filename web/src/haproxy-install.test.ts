@@ -107,10 +107,13 @@ describe("guided agent install command", () => {
         },
       });
       writeFileSync(
-        join(root, "gh"),
-        `#!/bin/sh\nwhile [ \"$1\" != --dir ]; do shift; done\nshift\nprintf '%s' ${shellQuote(manifest)} > \"$1/release.json\"\nprintf '%s' ${shellQuote(installer)} > \"$1/agentctl.py\"\nprintf '%s' '{}' > \"$1/release.sigstore.json\"\n`,
+        join(root, "curl"),
+        `#!/bin/sh\nset -eu\nprintf '%s\\n' "$@" >> "$CV_TEST_DOWNLOADS"\nwhile [ "$1" != --output ]; do shift; done\nshift\ncase "$1" in\n*/release.json) printf '%s' ${shellQuote(manifest)} > "$1";;\n*/agentctl.py) printf '%s' ${shellQuote(installer)} > "$1";;\n*) printf '%s' '{}' > "$1";;\nesac\n`,
         { mode: 0o700 },
       );
+      writeFileSync(join(root, "gh"), "#!/bin/sh\nexit 99\n", {
+        mode: 0o700,
+      });
       writeFileSync(
         join(root, "cosign"),
         '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$CV_TEST_VERIFY_ARGS"\n',
@@ -131,6 +134,7 @@ describe("guided agent install command", () => {
           PATH: root + ":" + process.env.PATH,
           XDG_DATA_HOME: root,
           CV_TEST_VERIFY_ARGS: join(root, "verification"),
+          CV_TEST_DOWNLOADS: join(root, "downloads"),
         },
       });
       const folder = join(root, "ecraela-haproxy", id);
@@ -144,6 +148,10 @@ describe("guided agent install command", () => {
         `.github/workflows/release.yml@refs/tags/${version}`,
       );
       expect(existsSync(join(folder, "installer-ran"))).toBe(true);
+      expect(script).not.toContain("gh release download");
+      const downloads = readFileSync(join(root, "downloads"), "utf8");
+      expect(downloads).toContain(signed.release_url + "/agentctl.py");
+      expect(downloads).not.toContain("Authorization");
       expect(existsSync(marker)).toBe(false);
       expect(statSync(join(folder, "agentctl.json")).mode & 0o777).toBe(0o600);
       const linux = agentInstallCommand(
@@ -159,6 +167,35 @@ describe("guided agent install command", () => {
       expect(linux).toContain("useradd --system");
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("rejects other publishers, mutable images and lookalike release hosts", () => {
+    const signed = {
+      ...setup,
+      release_version: "v0.1.0",
+      release_url: "https://github.com/ecraela/fleet/releases/download/v0.1.0",
+      image: "ghcr.io/ecraela/fleet@sha256:" + "a".repeat(64),
+    };
+    for (const change of [
+      { image: "ghcr.io/ecraela/haproxy-manager@sha256:" + "a".repeat(64) },
+      { image: "ghcr.io/ecraela/fleet:v0.1.0" },
+      {
+        release_url:
+          "https://github.com.attacker.test/ecraela/fleet/releases/download/v0.1.0",
+      },
+    ]) {
+      for (const mode of ["docker", "linux"] as const) {
+        expect(() =>
+          agentInstallCommand(
+            { ...signed, ...change },
+            "synthetic-token",
+            "edge",
+            setup.metrics_url,
+            id,
+            mode,
+          ),
+        ).toThrow("Invalid signed release settings");
+      }
     }
   });
 });

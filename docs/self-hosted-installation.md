@@ -1,8 +1,8 @@
 # Standalone Linux/Docker installation and recovery
 
-**Release availability:** Fleet currently publishes source only. The release-tag
-placeholders below document the signed installation contract; replace them only
-with an exact qualified tag once Fleet artifacts are published. Existing private
+**Release availability:** Choose an exact tag with a passing qualification record
+from [Fleet releases](https://github.com/ecraela/fleet/releases). Replace the
+release-tag placeholders below with that qualified tag. Existing private
 RC installations retain their original publisher; see [migration](migration-to-fleet.md).
 
 This customer workflow needs neither Converge nor a source checkout. The Go
@@ -27,7 +27,15 @@ Installation requires a qualified release from `ecraela/fleet`. A source snapsho
 or a release from the private predecessor does not meet that requirement.
 
 ```sh
-gh release download vMAJOR.MINOR.PATCH --repo ecraela/fleet --dir ./release-vMAJOR.MINOR.PATCH
+version=vMAJOR.MINOR.PATCH
+mkdir -p "release-$version"
+for asset in release.json release.sigstore.json agentctl.py selfhostctl.py selfhost.json \
+  haproxy-agent-linux-amd64 haproxy-agent-linux-arm64 \
+  haproxy-manager-linux-amd64 haproxy-manager-linux-arm64 \
+  LICENSE THIRD_PARTY_NOTICES.txt dependencies.json source.tar.gz source.json; do
+  curl --fail --location --proto '=https' --tlsv1.2 --output "release-$version/$asset" \
+    "https://github.com/ecraela/fleet/releases/download/$version/$asset"
+done
 cosign verify-blob ./release-vMAJOR.MINOR.PATCH/release.json \
   --bundle ./release-vMAJOR.MINOR.PATCH/release.sigstore.json \
   --certificate-identity https://github.com/ecraela/fleet/.github/workflows/release.yml@refs/tags/vMAJOR.MINOR.PATCH \

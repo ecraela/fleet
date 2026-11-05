@@ -1,0 +1,63 @@
+name: Bootstrap Fleet container registry
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fleet-registry-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    if: github.repository == 'ecraela/fleet' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Require the public Fleet repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: test "$(gh api repos/ecraela/fleet --jq .private)" = false
+      - name: Prepare documentation-only image
+        run: |
+          mkdir -p "$RUNNER_TEMP/fleet-registry-bootstrap"
+          cp LICENSE "$RUNNER_TEMP/fleet-registry-bootstrap/LICENSE"
+          cat > "$RUNNER_TEMP/fleet-registry-bootstrap/README.txt" <<'EOF'
+          This documentation-only image creates Ecraela Fleet's container package.
+          It contains no executable. Install only an exact release authenticated
+          by its signed release.json manifest.
+          https://github.com/ecraela/fleet
+          EOF
+          cat > "$RUNNER_TEMP/fleet-registry-bootstrap/Dockerfile" <<'EOF'
+          FROM scratch
+          COPY LICENSE README.txt /
+          LABEL org.opencontainers.image.source="https://github.com/ecraela/fleet"
+          LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+          EOF
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Fleet package without runtime artifacts
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ runner.temp }}/fleet-registry-bootstrap
+          push: true
+          tags: ghcr.io/ecraela/fleet:bootstrap-${{ github.sha }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+      - name: Sign the documentation image digest
+        env:
+          IMAGE: ghcr.io/ecraela/fleet@${{ steps.image.outputs.digest }}
+        run: cosign sign --yes "$IMAGE"

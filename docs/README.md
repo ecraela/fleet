@@ -2,8 +2,9 @@
 
 ## Install and operate
 
-Fleet currently provides source; see the [repository transition](migration-to-fleet.md)
-for release availability and the existing-installation boundary.
+Use an exact [Fleet release](https://github.com/ecraela/fleet/releases) with a
+passing published-assets qualification record. See the
+[repository transition](migration-to-fleet.md) for the existing-installation boundary.
 
 - [Install a self-hosted manager](self-hosted-installation.md): signed releases, upgrades, backup and restore.
 - [Connect existing HAProxy nodes](existing-haproxy.md): prerequisites, monitoring and explicit management permissions.
