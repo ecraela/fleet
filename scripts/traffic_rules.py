@@ -14,7 +14,7 @@ import uuid
 
 from agentctl import identity
 from demo import wait_for, write_private
-from geography import change_section, docker, install_profile, recent_requests
+from geography import change_section, docker, entrypoint_probe_batch, install_profile, recent_requests
 from lab import network
 from listeners import Listeners, local_dpa
 from pair import ROOT, compose, selected_state
@@ -223,7 +223,7 @@ class TrafficLab(Listeners):
             # A connection through the real entrypoint carries PROXY v2.
             self.deploy(policy([rule('Local v2 source',cidrs=['0.0.0.0/0','::/0'])],mode='observe'))
             since=int(time.time()*1000)
-            for _ in range(12):self.request('/shop/items','app-a');self.https('/shop/items',backend='app-a')
+            entrypoint_probe_batch(self)
             wait_for('PROXY v2 decisions from both nodes and protocols',lambda: len({(r['node_id'],r['scheme']) for r in recent_requests(self.query,since,traffic_decision='would_block',client_source='proxy_protocol')})==4)
             self.deploy(None)
             print('PASS: native PROXY v1/v2, HTTP/HTTPS, mixed-header rejection and untrusted-envelope resistance.',flush=True)
