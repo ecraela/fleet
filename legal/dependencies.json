@@ -930,7 +930,7 @@
   "inputs": {
     "go.mod": "42a88c2e175e1a92f262b9fed7e0d1da293aee0256fb9a9359addab037c33bcf",
     "go.sum": "6edefe240e060577623fcd275209b6f506bb332a4010b0787eff3ec49b344e8b",
-    "web/package.json": "f8abd98902d7e838f080160e42c0510adc91e4a186fb088fa1dde0e68a739713",
+    "web/package.json": "51c83e94984a5e8423915bd0da387b3212cf6d9071218000f0e7d7c227d9110e",
     "web/pnpm-lock.yaml": "a9dcec510049ddf7067bf9f9566f00d9f7e604cfb53fae68241c2309c6765cf1"
   },
   "schema": 1,

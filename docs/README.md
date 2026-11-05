@@ -26,9 +26,7 @@ for release availability and the existing-installation boundary.
 - [Contributing](../CONTRIBUTING.md): build environment, source layout and checks.
 - [Security reporting and boundaries](../SECURITY.md).
 - [Development and local demos](development.md).
-- [Current private v0.1.0-rc.12 release notes](releases/v0.1.0-rc.12.md).
-- [Previous private v0.1.0-rc.11 release notes](releases/v0.1.0-rc.11.md).
-- [Earlier release notes](releases/).
+- [Historical release notes](releases/) from the private predecessor.
 - [Load, failure and recovery drills](haproxy-hardening.md).
 - [Publication readiness](publication.md).
 - [Third-party components and notices](third-party.md).
@@ -36,17 +34,22 @@ for release availability and the existing-installation boundary.
 
 ## Architecture
 
-[Architecture decision records](adr/) describe accepted behavior and its limits.
-Their numbering continues from the original Converge integration; the number is
-not a missing-file sequence in this repository. Older records describe the
-system at the time of the decision. Later records supersede the corresponding
-behavior.
+Start with the [architecture overview](architecture.md) for components, traffic
+ownership, connections, storage and recovery. The [development roadmap](haproxy-implementation-plan.md)
+describes remaining release work.
 
-The [implementation plan](haproxy-implementation-plan.md) contains proposed work
-and implementation notes. It is not the current feature list or a production
-support promise. Use the release notes and operator guides for those boundaries.
-The [Data Plane API contract](providers/haproxy-dataplane.md) records the tested
-upstream API profile.
+Design records provide background for specific decisions:
+
+- [Independent management plane](adr/0035-haproxy-management-service.md).
+- [Host-owned signed upgrades](adr/0047-haproxy-agent-releases.md).
+- [Node-local TLS issuance](adr/0040-haproxy-automatic-dns01-tls.md).
+- [Outbound Converge connector](adr/0049-haproxy-outbound-converge-connector.md).
+- [Latest observations for live metrics](adr/0053-haproxy-latest-observations.md).
+- [Rollback and tenant isolation](adr/0059-haproxy-rollback-and-tenant-isolation.md).
+
+The [full decision history](adr/) includes earlier designs; the operator guides
+describe current supported behavior. The [Data Plane API contract](providers/haproxy-dataplane.md)
+records the tested upstream API profile.
 
 ---
 
