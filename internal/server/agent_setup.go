@@ -27,7 +27,7 @@ func (s *Server) validateAgentSetup() error {
 		return nil
 	}
 	if a.ReleaseVersion != "" || a.ReleaseURL != "" {
-		if !regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$`).MatchString(a.ReleaseVersion) || a.ReleaseURL != "https://github.com/ecraela/fleet/releases/download/"+a.ReleaseVersion || !regexp.MustCompile(`^ghcr\.io/ecraela/haproxy-manager@sha256:[a-f0-9]{64}$`).MatchString(a.Image) {
+		if !regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$`).MatchString(a.ReleaseVersion) || a.ReleaseURL != "https://github.com/ecraela/fleet/releases/download/"+a.ReleaseVersion || !regexp.MustCompile(`^ghcr\.io/ecraela/fleet@sha256:[a-f0-9]{64}$`).MatchString(a.Image) {
 			return errors.New("release setup requires an exact signed release URL and immutable image digest")
 		}
 	}

@@ -113,6 +113,7 @@ and code layout.
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [Architecture](docs/architecture.md)
 - [Licensing and paid support](LICENSING.md)
 - [Applications and TLS](docs/applications.md)
 - [Configuration and node operations](docs/operations.md)

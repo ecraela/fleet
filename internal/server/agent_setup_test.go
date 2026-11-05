@@ -4,9 +4,42 @@ import (
 	"encoding/json"
 	"github.com/ecraela/fleet/internal/domain"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestAgentSetupReleasePublisher(t *testing.T) {
+	f := newFixture(t, "manager", "http://metrics.invalid")
+	valid := AgentSetup{
+		ReleaseVersion: "v0.1.0",
+		ReleaseURL:     "https://github.com/ecraela/fleet/releases/download/v0.1.0",
+		Image:          "ghcr.io/ecraela/fleet@sha256:" + strings.Repeat("a", 64),
+		ManagerURL:     "https://manager.test",
+		IngestURL:      "https://ingest.test",
+	}
+	for _, tc := range []struct {
+		name  string
+		url   string
+		image string
+		valid bool
+	}{
+		{"Fleet release", valid.ReleaseURL, valid.Image, true},
+		{"predecessor image", valid.ReleaseURL, "ghcr.io/ecraela/haproxy-manager@sha256:" + strings.Repeat("a", 64), false},
+		{"predecessor release", "https://github.com/ecraela/haproxy-manager/releases/download/v0.1.0", valid.Image, false},
+		{"mutable image", valid.ReleaseURL, "ghcr.io/ecraela/fleet:v0.1.0", false},
+		{"short digest", valid.ReleaseURL, "ghcr.io/ecraela/fleet@sha256:abcd", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f.server.config.AgentSetup = valid
+			f.server.config.AgentSetup.ReleaseURL = tc.url
+			f.server.config.AgentSetup.Image = tc.image
+			if err := f.server.validateAgentSetup(); (err == nil) != tc.valid {
+				t.Fatalf("valid=%t, error=%v", tc.valid, err)
+			}
+		})
+	}
+}
 
 func TestGuidedEnrollmentAuthorization(t *testing.T) {
 	f := newFixture(t, "manager", "http://metrics.invalid")
