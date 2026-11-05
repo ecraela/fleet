@@ -12,15 +12,16 @@ networking.
 
 ## Status
 
-Fleet is a public source preview under [AGPL-3.0-only](LICENSE), with
+Fleet is pre-1.0 software under [AGPL-3.0-only](LICENSE), with
 [optional commercial licensing and paid support](LICENSING.md). Its initial
 source snapshot comes from the previously qualified private manager release,
 v0.1.0-rc.14. Fleet has a new repository and release publisher; that earlier
 qualification does not qualify a new Fleet binary or image.
 
-**No Fleet release artifacts have been published yet.** Use the source demo below
-to try the console and agent. Production installation requires an exact signed
-Fleet release and its qualification results. See [release verification](docs/agent-releases.md)
+**Install only an exact signed Fleet candidate with published qualification results.**
+Check the [release page](https://github.com/ecraela/fleet/releases); publishing
+artifacts alone does not qualify them. Use the source demo below to try the
+console and agent. See [release verification](docs/agent-releases.md)
 and the [repository transition](docs/migration-to-fleet.md).
 
 The tested pilot shape is Ubuntu 24.04 with Docker Engine and Compose; native

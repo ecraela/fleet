@@ -223,13 +223,97 @@ func main() {
     return result, public
 
 
-def host_command(bundle, *args, check=True):
-    result = subprocess.run([sys.executable, '-I', str(bundle / 'selfhostctl.py'), *map(str, args)],
+def host_command(bundle, *args, check=True, agent=False):
+    tool = 'agentctl.py' if agent else 'selfhostctl.py'
+    result = subprocess.run([sys.executable, '-I', str(bundle / tool), *map(str, args)],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if result.returncode and check:
         # Curated tool errors do not echo secrets or process commands.
         raise ctl.Error('Standalone release command failed: ' + result.stderr.decode().strip())
     return result
+
+
+def agent_lifecycle(config, profile, baseline, candidate, trust_args):
+    ctl.trust.private_json(profile, config)
+    before = ctl.trust.identity(config['state_dir'])
+    for action, release in [('install', baseline), ('upgrade', candidate), ('rollback', baseline)]:
+        host_command(candidate[0], action, '--config', profile, '--release', release[0],
+                     '--version', release[1]['version'], *trust_args, agent=True)
+        if ctl.trust.identity(config['state_dir']) != before:
+            raise ctl.Error('Agent lifecycle changed its identity or private key')
+
+
+def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args):
+    import pwd
+
+    if os.geteuid() != 0:
+        command = ['sudo', '--preserve-env=GITHUB_ACTIONS,DOCKER_CONFIG,PATH', sys.executable,
+                   Path(__file__).resolve(), '--native-agent-worker', '--work', work,
+                   '--baseline-release', baseline[0], '--baseline-version', baseline[1]['version'],
+                   '--candidate-release', candidate[0], '--candidate-version', candidate[1]['version'],
+                   '--manager-port', args.manager_port, '--ingest-port', args.ingest_port]
+        if trust_args:
+            command += ['--fixture-publisher', trust_args[1]]
+        ctl.command(command)
+        return
+
+    def compose(*options):
+        return ctl.command(['docker', 'compose', '--project-directory', work, '--env-file', '/dev/null',
+                            '-f', work / 'nodes.json', *options])
+
+    public = Path('/etc/ecraela-fleet-qualification')
+    state = Path('/var/lib/ecraela-fleet-qualification')
+    unit = Path('/etc/systemd/system/ecraela-haproxy-agent.service')
+    if any(p.exists() for p in (public, state, unit)):
+        raise ctl.Error('Refusing to replace an existing native agent installation')
+    user = 'fleet-agent-ci'
+    try:
+        account = pwd.getpwnam(user)
+    except KeyError:
+        ctl.command(['useradd', '--system', '--user-group', '--home-dir', '/nonexistent',
+                     '--shell', '/usr/sbin/nologin', user])
+        account = pwd.getpwnam(user)
+    proxy = compose('ps', '-q', 'haproxy-a').decode().strip()
+    info = json.loads(ctl.command(['docker', 'inspect', proxy]))[0]
+    networks = info['NetworkSettings']['Networks']
+    if len(networks) != 1:
+        raise ctl.Error('Expected one isolated proxy network')
+    metrics = next(iter(networks.values()))['IPAddress']
+    original = work / 'node-a/agent'
+    before = ctl.trust.identity(original)
+    agent = compose('ps', '-q', 'agent-a').decode().strip()
+    if not agent:
+        raise ctl.Error('Original Docker agent is missing')
+    compose('stop', '-t', '10', 'agent-a')
+    try:
+        shutil.copytree(original, state, symlinks=True)
+        for path in [state, *state.rglob('*')]:
+            if path.is_symlink() or not (path.is_file() or path.is_dir()):
+                raise ctl.Error('Unexpected native agent state file')
+            os.chown(path, account.pw_uid, account.pw_gid)
+        public.mkdir(mode=0o755)
+        shutil.copyfile(install / 'state/pki/ca.crt', public / 'ca.crt')
+        (public / 'ca.crt').chmod(0o644)
+        config = {'mode': 'linux', 'user': user, 'install_dir': str(public / 'software'),
+                  'state_dir': str(state), 'arguments': [
+                      '--server-url', f'https://localhost:{args.manager_port}',
+                      '--ingest-url', f'https://localhost:{args.ingest_port}',
+                      '--server-ca', str(public / 'ca.crt'), '--state-dir', str(state),
+                      '--metrics-url', f'http://{metrics}:8404/metrics', '--interval', '1s']}
+        agent_lifecycle(config, work / 'native-agent.json', baseline, candidate, trust_args)
+        since = time.time()
+        ctl.command(['systemctl', 'restart', 'ecraela-haproxy-agent.service'])
+        ctl.trust.wait_healthy(config, baseline[1], since, before, 45)
+        if ctl.trust.identity(state) != before or ctl.trust.identity(original) != before:
+            raise ctl.Error('Native agent restart changed the original identity or key')
+    finally:
+        subprocess.run(['systemctl', 'disable', '--now', 'ecraela-haproxy-agent.service'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        unit.unlink(missing_ok=True)
+        subprocess.run(['systemctl', 'daemon-reload'], check=True)
+        shutil.rmtree(state, ignore_errors=True)
+        shutil.rmtree(public, ignore_errors=True)
+        ctl.command(['docker', 'start', agent])
 
 
 def published_releases(args):
@@ -479,6 +563,18 @@ def scenario(args, work, report):
             report['database_schemas_after_transition'].append(
                 {'action': action, 'version': fixture[1]['version'], 'database_schema': int(actual)})
         report['upgrade_and_rollback'] = True
+        for letter in ('a', 'b'):
+            config = {'mode': 'docker', 'state_dir': str(work / ('node-' + letter) / 'agent'),
+                      'install_dir': str(work / ('agent-software-' + letter)),
+                      'docker': {'service': 'agent-' + letter, 'project_directory': str(work),
+                                 'env_file': '/dev/null', 'files': [str(nodes_file)]}}
+            agent_lifecycle(config, work / ('agent-' + letter + '.json'), baseline, candidate, trust_args)
+            wait('fresh telemetry after agent rollback ' + letter, api.fresh)
+        report['docker_agent_install_upgrade_rollback'] = True
+        if args.native_agent:
+            native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
+            wait('fresh telemetry after native agent recovery', api.fresh)
+            report['linux_systemd_agent_install_upgrade_rollback_restart'] = True
         if broken:
             failed = host_command(candidate[0], 'upgrade', '--directory', install, '--release', broken[0],
                                   '--version', broken[1]['version'], *trust_args, '--timeout', 8, check=False)
@@ -634,11 +730,35 @@ def main():
     p.add_argument('--baseline-version', help='exact published baseline tag')
     p.add_argument('--candidate-release', type=Path, help='downloaded published candidate bundle; uses Sigstore')
     p.add_argument('--candidate-version', help='exact published candidate tag')
+    p.add_argument('--native-agent', action='store_true', help='test systemd using sudo on an ephemeral Linux GitHub Actions runner')
+    p.add_argument('--native-agent-worker', action='store_true', help=argparse.SUPPRESS)
+    p.add_argument('--fixture-publisher', type=Path, help=argparse.SUPPRESS)
     p.add_argument('--manager-port', type=int, default=18543)
     p.add_argument('--ingest-port', type=int, default=19543)
     p.add_argument('--console-port', type=int, default=5181)
     p.add_argument('--keep', action='store_true', help='keep only this disposable installation for inspection')
     args = p.parse_args()
+    if args.native_agent or args.native_agent_worker:
+        if platform.system() != 'Linux' or os.getenv('GITHUB_ACTIONS') != 'true':
+            p.error('Native agent qualification requires an ephemeral Linux GitHub Actions runner')
+    if args.native_agent_worker:
+        if os.geteuid() != 0 or not all((args.baseline_release, args.baseline_version,
+                                       args.candidate_release, args.candidate_version)):
+            p.error('Native agent worker requires root and two authenticated release bundles')
+        releases = []
+        for folder, version in ((args.baseline_release, args.baseline_version),
+                                (args.candidate_release, args.candidate_version)):
+            manifest, _, _ = ctl.release(folder, version, args.fixture_publisher)
+            for name, digest in manifest['artifacts'].items():
+                if ctl.hashlib.sha256(ctl.trust.regular(folder / name, ctl.trust.MAX_BINARY)).hexdigest() != digest:
+                    raise ctl.Error('Native agent release artifact checksum differs: ' + name)
+            releases.append((folder, manifest))
+        trust_args = ['--public-key', args.fixture_publisher] if args.fixture_publisher else []
+        native_agent_lifecycle(args, args.work.resolve(), args.work.resolve() / 'customer',
+                               *releases, trust_args)
+        return
+    if args.fixture_publisher:
+        p.error('Fixture publisher is restricted to the native CI worker')
     published = (args.baseline_release, args.baseline_version, args.candidate_release, args.candidate_version)
     if any(published) and (not all(published) or args.base_image or args.reuse_images):
         p.error('Supply both published bundles and exact versions, without fixture image options')

@@ -1,8 +1,8 @@
 # Development roadmap
 
-Fleet is a public source preview. Its first binary and container release still
-needs published-artifact qualification. The private predecessor's RC.14 results
-do not qualify artifacts built by the Fleet publisher.
+Fleet is pre-1.0 software. Each binary and container candidate needs its own
+published-artifact qualification. The private predecessor's RC.14 results do not
+qualify artifacts built by the Fleet publisher.
 
 ## Next release
 

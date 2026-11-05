@@ -43,7 +43,7 @@ jobs:
           make web-install
           go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
       - name: Signed install, upgrade, failed-start rollback and encrypted cold restore
-        run: python3 scripts/selfhost_smoke.py --work "$RUNNER_TEMP/haproxy-clean-install"
+        run: python3 scripts/selfhost_smoke.py --native-agent --work "$RUNNER_TEMP/haproxy-clean-install"
       - name: Retain sanitized standalone lifecycle evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

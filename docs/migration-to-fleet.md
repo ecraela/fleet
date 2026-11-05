@@ -36,8 +36,9 @@ rollback must retain verification of the original release publisher.
 
 ## Public releases
 
-The initial public repository provides source and a reproducible local demo.
-No Fleet binary or container release is advertised as qualified yet. The new
+The initial public snapshot provided source and a reproducible local demo.
+Fleet binary and container releases remain candidates until their matching
+published-asset qualification passes. The new
 release workflow targets `ghcr.io/ecraela/fleet` and refuses publication from a
 different repository or to a private package.
 

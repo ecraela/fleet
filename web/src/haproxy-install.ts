@@ -61,7 +61,8 @@ function releasedAgentInstallCommand(
   if (
     !/^v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/.test(version) ||
     setup.release_url !==
-      `https://github.com/ecraela/fleet/releases/download/${version}`
+      `https://github.com/ecraela/fleet/releases/download/${version}` ||
+    !/^ghcr\.io\/ecraela\/fleet@sha256:[a-f0-9]{64}$/.test(setup.image)
   )
     throw new Error("Invalid signed release settings");
   const q = shellQuote;
@@ -105,7 +106,9 @@ function releasedAgentInstallCommand(
       : []),
     `  cv_agent_dir="\${XDG_DATA_HOME:-$HOME/.local/share}/ecraela-haproxy/${id}"`,
     '  mkdir -p "$cv_agent_dir/release" "$cv_agent_dir/identity"',
-    `  gh release download ${q(version)} --repo ecraela/fleet --dir "$cv_agent_dir/release" --pattern 'release.*' --pattern 'agentctl.py' --pattern 'haproxy-agent-linux-*'`,
+    "  for cv_asset in release.json release.sigstore.json agentctl.py haproxy-agent-linux-amd64 haproxy-agent-linux-arm64; do",
+    `    curl --fail --location --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 120 --output "$cv_agent_dir/release/$cv_asset" ${q(setup.release_url + "/")}"$cv_asset"`,
+    "  done",
     `  cosign verify-blob --bundle "$cv_agent_dir/release/release.sigstore.json" --certificate-identity ${q(`https://github.com/ecraela/fleet/.github/workflows/release.yml@refs/tags/${version}`)} --certificate-oidc-issuer https://token.actions.githubusercontent.com "$cv_agent_dir/release/release.json"`,
     "  python3 -I - \"$cv_agent_dir/release\" <<'PY'",
     "import hashlib, json, pathlib, sys",

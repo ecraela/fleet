@@ -35,11 +35,6 @@ jobs:
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.4
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Confirm public distribution and download exact release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,14 +50,29 @@ jobs:
           test "$(gh api orgs/ecraela/packages/container/fleet --jq .visibility)" = public
           umask 077
           mkdir -p "$RUNNER_TEMP/published-baseline" "$RUNNER_TEMP/published-candidate"
-          gh release download "$BASELINE_VERSION" --repo ecraela/fleet --dir "$RUNNER_TEMP/published-baseline"
-          gh release download "$CANDIDATE_VERSION" --repo ecraela/fleet --dir "$RUNNER_TEMP/published-candidate"
+          for kind in baseline candidate; do
+            if [ "$kind" = baseline ]; then version="$BASELINE_VERSION"; else version="$CANDIDATE_VERSION"; fi
+            for asset in release.json release.sigstore.json agentctl.py selfhostctl.py selfhost.json \
+              haproxy-agent-linux-amd64 haproxy-agent-linux-arm64 \
+              haproxy-manager-linux-amd64 haproxy-manager-linux-arm64 \
+              LICENSE THIRD_PARTY_NOTICES.txt dependencies.json source.tar.gz source.json; do
+              curl --fail --location --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 120 \
+                --output "$RUNNER_TEMP/published-$kind/$asset" \
+                "https://github.com/ecraela/fleet/releases/download/$version/$asset"
+            done
+          done
+      - name: Use an empty Docker credential configuration
+        run: |
+          mkdir -m 700 "$RUNNER_TEMP/anonymous-docker"
+          printf '{}\n' > "$RUNNER_TEMP/anonymous-docker/config.json"
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/anonymous-docker" >> "$GITHUB_ENV"
       - name: Signed install, live two-node traffic, upgrade, rollback and encrypted cold restore
         env:
           BASELINE_VERSION: ${{ inputs.baseline }}
           CANDIDATE_VERSION: ${{ inputs.candidate }}
         run: |
-          python3 scripts/selfhost_smoke.py --work "$RUNNER_TEMP/published-install" \
+          python3 scripts/selfhost_smoke.py \
+            --native-agent --work "$RUNNER_TEMP/published-install" \
             --baseline-release "$RUNNER_TEMP/published-baseline" --baseline-version "$BASELINE_VERSION" \
             --candidate-release "$RUNNER_TEMP/published-candidate" --candidate-version "$CANDIDATE_VERSION"
       - name: Retain sanitized release qualification evidence
