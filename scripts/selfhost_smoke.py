@@ -243,6 +243,29 @@ def agent_lifecycle(config, profile, baseline, candidate, trust_args):
             raise ctl.Error('Agent lifecycle changed its identity or private key')
 
 
+@contextmanager
+def native_manager_hosts(installation, hosts=Path('/etc/hosts')):
+    engine = ctl.Engine(installation, ctl.configuration(installation))
+    network = engine.c['project'] + '_control'
+    addresses = {}
+    for service in ('manager', 'ingest'):
+        container = engine.compose('ps', '-q', service).decode().strip()
+        info = json.loads(ctl.command(['docker', 'inspect', container]))[0]
+        address = info['NetworkSettings']['Networks'].get(network, {}).get('IPAddress')
+        if not address:
+            raise ctl.Error('Missing isolated management bridge address')
+        addresses[service] = address
+    original = hosts.read_bytes()
+    for line in original.decode().splitlines():
+        if set(line.split('#', 1)[0].lower().split()[1:]) & addresses.keys():
+            raise ctl.Error('Refusing to replace existing management host aliases')
+    try:
+        hosts.write_bytes(original + ''.join(f'\n{address} {name}\n' for name, address in addresses.items()).encode())
+        yield
+    finally:
+        hosts.write_bytes(original)
+
+
 def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args):
     import pwd
 
@@ -306,15 +329,18 @@ def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
         (public / 'ca.crt').chmod(0o644)
         config = {'mode': 'linux', 'user': user, 'install_dir': str(public / 'software'),
                   'state_dir': str(state), 'arguments': [
-                      '--server-url', f'https://localhost:{args.manager_port}',
-                      '--ingest-url', f'https://localhost:{args.ingest_port}',
+                      '--server-url', 'https://manager:8443',
+                      '--ingest-url', 'https://ingest:8443',
                       '--server-ca', str(public / 'ca.crt'), '--state-dir', str(state),
                       '--name', 'node-a',
                       '--metrics-url', f'http://{metrics}:8404/metrics', '--interval', '1s']}
-        agent_lifecycle(config, work / 'native-agent.json', baseline, candidate, trust_args)
-        since = time.time()
-        ctl.command(['systemctl', 'restart', 'ecraela-haproxy-agent.service'])
-        ctl.trust.wait_healthy(config, baseline[1], since, before, 45)
+        # The copied identity remains bound to its original endpoints. Resolve
+        # those names on this disposable host rather than rewriting its state.
+        with native_manager_hosts(install):
+            agent_lifecycle(config, work / 'native-agent.json', baseline, candidate, trust_args)
+            since = time.time()
+            ctl.command(['systemctl', 'restart', 'ecraela-haproxy-agent.service'])
+            ctl.trust.wait_healthy(config, baseline[1], since, before, 45)
         if ctl.trust.identity(state) != before or ctl.trust.identity(original) != before:
             raise ctl.Error('Native agent restart changed the original identity or key')
     finally:

@@ -1,15 +1,39 @@
 import hashlib
+import json
 import os
 from pathlib import Path
 import tempfile
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import selfhost_smoke as smoke
 
 
 class NativeQualificationBoundary(unittest.TestCase):
+    def test_native_names_use_control_network_and_are_restored_on_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            hosts = Path(temporary) / 'hosts'
+            original = b'127.0.0.1 localhost\n'
+            hosts.write_bytes(original)
+            engine = Mock(c={'project': 'isolated'})
+            engine.compose.side_effect = [b'manager-id', b'ingest-id']
+            def inspect(command):
+                address = '172.19.0.2' if command[-1] == 'manager-id' else '172.19.0.3'
+                return json.dumps([{'NetworkSettings': {'Networks': {
+                    'isolated_data': {'IPAddress': '172.18.0.2'},
+                    'isolated_control': {'IPAddress': address}}}}]).encode()
+            with patch.object(smoke.ctl, 'configuration', return_value=engine.c), \
+                    patch.object(smoke.ctl, 'Engine', return_value=engine), \
+                    patch.object(smoke.ctl, 'command', side_effect=inspect):
+                with self.assertRaisesRegex(RuntimeError, 'test interrupted'):
+                    with smoke.native_manager_hosts(Path('/installation'), hosts):
+                        self.assertIn(b'172.19.0.2 manager', hosts.read_bytes())
+                        self.assertIn(b'172.19.0.3 ingest', hosts.read_bytes())
+                        self.assertNotIn(b'172.18.0.2', hosts.read_bytes())
+                        raise RuntimeError('test interrupted')
+            self.assertEqual(hosts.read_bytes(), original)
+
     def test_native_delegation_does_not_expose_raw_worker_stderr(self):
         args = types.SimpleNamespace(manager_port=18543, ingest_port=19543)
         release = (Path('/test/release'), {'version': 'v0.1.0'})
