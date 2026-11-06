@@ -67,11 +67,15 @@ or use a correctly trusted deployment certificate. Do not bypass browser TLS
 warnings. The HTTP helper above is an explicit loopback development alternative.
 In production, keep `--local-insecure-cookies` and `--local-http-listen` unset.
 
-The browser opens at `/` (Overview) or `/login`, with the same-origin API at
+The browser opens at `/` (the cluster list) or `/login`, with the same-origin API at
 `/api/haproxy/v1/`. Node and operator integrations retain the `/v1/` API and mTLS
 control transport. A reverse proxy must preserve Origin, Host, cookies and the
 streaming response; disable buffering and keep SSE connections open. Do not
 expose PostgreSQL, metrics, logs, HAProxy runtime sockets or Data Plane API.
+
+See the [console walkthrough](getting-started.md) for cluster navigation, node
+enrollment, application routing and traffic investigation. **Installation settings**
+in the account menu contains local access and the optional Converge connection.
 
 ## Create and recover accounts
 

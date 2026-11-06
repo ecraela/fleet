@@ -17,30 +17,11 @@ Local console ── local login ── Your Go manager ═╝
                              HAProxy A  HAProxy B
 ```
 
-## Deployment
+## Configure your manager
 
-Deploy the same manager executable with `serve --role relay`, an installation
-PKI/TLS certificate, a dedicated HAProxy database and these settings:
-
-```sh
-haproxy-manager serve --role relay --listen :8443 --pki-dir /var/lib/relay/pki \
-  --browser-origin https://converge.example.com \
-  --browser-login-secret-file /run/secrets/converge-haproxy-login
-```
-
-Set `HAPROXY_DATABASE_URL` from your secret manager, run `haproxy-manager migrate`
-as the database migration principal, and configure Phoenix with that same
-dedicated browser-login secret and audience. Point Converge's
-`HAPROXY_API_ORIGIN` at the relay's HTTPS origin. The local Vite equivalent is
-`VITE_HAPROXY_PROXY_TARGET`; `HAPROXY_DEV_CA` supplies a private development CA.
-These dev settings may live in the console's ignored `.env.local` file.
-
-The relay's public ingress must support HTTP/2 gRPC at
-`/ecraela.haproxy.connector.v1.Relay/Connect` and the bounded
-`/v1/connector/claim` machine endpoints. Converge's browser proxy exposes only
-`/v1/connector` settings and the normal browser API paths. It excludes claim,
-machine authentication, local login and the gRPC transport. Use verified TLS
-end to end. The relay does not need the manager's address, PKI or operator key.
+If you use an existing Converge deployment, its operator provides the relay URL.
+Configure that destination on your manager, then pair it using the steps below.
+Running the relay is covered separately under [Deployment](#deployment).
 
 Add these optional flags to your existing self-hosted manager command:
 
@@ -107,6 +88,34 @@ If a change times out, inspect its operation/version history before resubmitting
 The connector never replays an uncertain mutation. DNS controls still prepare
 ordinary Converge DNS drafts; review/apply stays in the DNS workflow. HAProxy
 operations do not enter that review process.
+
+## Deployment
+
+This section is for the team operating Converge. A Fleet installation connecting
+to an existing relay only needs the manager configuration and pairing above.
+
+Deploy the same manager executable with `serve --role relay`, an installation
+PKI/TLS certificate, a dedicated HAProxy database and these settings:
+
+```sh
+haproxy-manager serve --role relay --listen :8443 --pki-dir /var/lib/relay/pki \
+  --browser-origin https://converge.example.com \
+  --browser-login-secret-file /run/secrets/converge-haproxy-login
+```
+
+Set `HAPROXY_DATABASE_URL` from your secret manager, run `haproxy-manager migrate`
+as the database migration principal, and configure Phoenix with that same
+dedicated browser-login secret and audience. Point Converge's
+`HAPROXY_API_ORIGIN` at the relay's HTTPS origin. The local Vite equivalent is
+`VITE_HAPROXY_PROXY_TARGET`; `HAPROXY_DEV_CA` supplies a private development CA.
+These dev settings may live in the console's ignored `.env.local` file.
+
+The relay's public ingress must support HTTP/2 gRPC at
+`/ecraela.haproxy.connector.v1.Relay/Connect` and the bounded
+`/v1/connector/claim` machine endpoints. Converge's browser proxy exposes only
+`/v1/connector` settings and the normal browser API paths. It excludes claim,
+machine authentication, local login and the gRPC transport. Use verified TLS
+end to end. The relay does not need the manager's address, PKI or operator key.
 
 ## Two-node demo
 

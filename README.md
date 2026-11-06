@@ -10,19 +10,22 @@ when the manager is unavailable. Enrollment does not install HAProxy or create
 a shared traffic entrypoint; you provide the nodes, application servers and
 networking.
 
+![Self-hosted console showing node health and traffic in the two-node demo](docs/images/self-hosted-console.jpg)
+
+The self-hosted console, with synthetic traffic from the local two-node demo.
+Follow the [console walkthrough](docs/getting-started.md) to connect nodes,
+create an application and inspect its traffic.
+
 ## Status
 
 Fleet is pre-1.0 software under [AGPL-3.0-only](LICENSE), with
-[optional commercial licensing and paid support](LICENSING.md). Its initial
-source snapshot comes from the previously qualified private manager release,
-v0.1.0-rc.14. Fleet has a new repository and release publisher; that earlier
-qualification does not qualify a new Fleet binary or image.
+[optional commercial licensing and paid support](LICENSING.md).
 
-**Install only an exact signed Fleet candidate with published qualification results.**
-Check the [release page](https://github.com/ecraela/fleet/releases); publishing
-artifacts alone does not qualify them. Use the source demo below to try the
-console and agent. See [release verification](docs/agent-releases.md)
-and the [repository transition](docs/migration-to-fleet.md).
+The current qualified preview is [v0.1.0-rc.16](https://github.com/ecraela/fleet/releases/tag/v0.1.0-rc.16).
+Clean installation, Docker/Linux agent upgrades, rollback and encrypted recovery
+passed on native Ubuntu 24.04 AMD64 and ARM64 hosts. The release page includes
+the test reports. Authenticate the exact release before installing; see
+[release verification](docs/agent-releases.md).
 
 The tested pilot shape is Ubuntu 24.04 with Docker Engine and Compose; native
 Linux agents are also tested. Small-demo results are not capacity guarantees.
@@ -47,8 +50,9 @@ Report vulnerabilities through the private contact in [SECURITY.md](SECURITY.md)
 ## Install or connect existing nodes
 
 Use the [self-hosted installation guide](docs/self-hosted-installation.md) for
-signed release installation, upgrades and recovery once a qualified Fleet
-release is available. There is no default password or public signup.
+signed release installation, upgrades and recovery. There is no default password
+or public signup. Existing private manager installations should first read the
+[migration guide](docs/migration-to-fleet.md).
 
 For a deployment you already run, follow the
 [existing HAProxy guide](docs/existing-haproxy.md). Start with monitoring and
@@ -64,6 +68,8 @@ and publishes only loopback ports. It requires no Converge checkout or login.
 Do not use the lab deployment as your production installation.
 
 ```sh
+git clone https://github.com/ecraela/fleet.git
+cd fleet
 export HAPROXY_PAIR_STANDALONE=1
 python3 scripts/prepare_release_lab.py
 python3 scripts/standalone.py up --image converge-haproxy:local
@@ -113,6 +119,7 @@ and code layout.
 
 ## Documentation
 
+- [Console walkthrough](docs/getting-started.md)
 - [Documentation index](docs/README.md)
 - [Architecture](docs/architecture.md)
 - [Licensing and paid support](LICENSING.md)
