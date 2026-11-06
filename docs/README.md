@@ -2,6 +2,9 @@
 
 ## Install and operate
 
+Start with the [console walkthrough](getting-started.md) for your first cluster,
+application and traffic checks.
+
 Use an exact [Fleet release](https://github.com/ecraela/fleet/releases) with a
 passing published-assets qualification record. See the
 [repository transition](migration-to-fleet.md) for the existing-installation boundary.
