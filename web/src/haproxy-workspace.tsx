@@ -1,4 +1,11 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { ConnectionIssue } from "./connection-health";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link as AriaLink } from "@ecraela/ui";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -10,7 +17,6 @@ import {
   DescriptionItem,
   DescriptionList,
   EmptyState,
-  InlineTip,
   IconButton,
   LoadingStatus,
   Menu,
@@ -73,6 +79,10 @@ export function HAProxyWorkspace({
   onRevoke: (node: HAProxyNode) => void;
   onLoadMore: () => Promise<void>;
 }) {
+  const [applicationLabel, setApplicationLabel] = useState<{
+    key: string;
+    name: string;
+  } | null>(null);
   const location = useLocation(),
     navigate = useNavigate();
   const route = readHAProxyRoute(location.pathname, basePath);
@@ -91,11 +101,30 @@ export function HAProxyWorkspace({
     (cluster) => cluster.id === requestedCluster,
   );
   const clusters = cluster ? [cluster] : [];
+  const reportApplicationName = useCallback(
+    (id: string, name: string) => {
+      const key = `${cluster?.id}/${id}`;
+      setApplicationLabel((current) =>
+        current?.key === key && current.name === name ? current : { key, name },
+      );
+    },
+    [cluster?.id],
+  );
   const filter = requestedCluster ?? "";
   const clusterIndex =
     route.kind === "list" && route.section !== "settings" && !requestedCluster;
   const installationSettings =
     route.kind === "list" && route.section === "settings" && !requestedCluster;
+  const settingsTabs = [
+    ...(settingsContent ? [{ id: "access", label: "Access" }] : []),
+    { id: "software", label: "Agent software" },
+    { id: "recovery", label: "Backups & recovery" },
+  ];
+  const settingsTab = settingsTabs.some(
+    (tab) => tab.id === params.get("settings_tab"),
+  )
+    ? params.get("settings_tab")!
+    : settingsTabs[0]!.id;
   const indexParams = new URLSearchParams();
   for (const key of ["cluster_query", "cluster_health", "cluster_page"])
     if (params.has(key)) indexParams.set(key, params.get(key)!);
@@ -127,7 +156,11 @@ export function HAProxyWorkspace({
             : requestedCluster;
     if (target) next.set("cluster", target);
     else next.delete("cluster");
-    return haproxyPath(basePath, parts, next.size ? "?" + next : "");
+    const targetParts =
+      parts.length === 1 && parts[0] === "infrastructure" && target
+        ? ["infrastructure", "clusters", target, "nodes"]
+        : parts;
+    return haproxyPath(basePath, targetParts, next.size ? "?" + next : "");
   };
   const clusterHref = (id: string) => {
     const next = new URLSearchParams(indexParams);
@@ -136,7 +169,7 @@ export function HAProxyWorkspace({
     return haproxyPath(basePath, ["overview"], "?" + next);
   };
   const openNode = (id: string) =>
-    navigate(href(["infrastructure", "nodes", id]));
+    navigate(href(["infrastructure", "nodes", id, "metrics"]));
   const openApp = (clusterId: string, id: string, tab = "overview") =>
     navigate(href(["applications", clusterId, id, tab]));
   const scopedNodes =
@@ -160,7 +193,7 @@ export function HAProxyWorkspace({
       : clusterIndex
         ? "HAProxy"
         : installationSettings
-          ? "Installation settings"
+          ? "Settings"
           : route.section === "overview"
             ? (cluster?.name ?? "Overview")
             : haproxySections.find((s) => s.id === route.section)!.label;
@@ -209,46 +242,117 @@ export function HAProxyWorkspace({
             href(["applications", cluster.id, id, tab]),
           onOpen: (id: string, tab?: string) => openApp(cluster.id, id, tab),
           onBack: () => navigate(href(["applications"])),
+          onTitleChange: reportApplicationName,
           query: params.get("app_query") ?? "",
           onQueryChange: (value: string) => setParam("app_query", value),
         }
       : null;
+  const nodeInventory =
+    fleet && client ? (
+      <NodeInventory
+        fleet={fleet}
+        filter={filter}
+        query={params.get("node_query") ?? ""}
+        page={Math.trunc(Number(params.get("node_page"))) || 1}
+        onQuery={(value) => setParam("node_query", value)}
+        onPage={(value) => setParam("node_page", String(value))}
+        href={(id) => href(["infrastructure", "nodes", id, "metrics"])}
+        onOpen={openNode}
+      />
+    ) : null;
+  const labelForTab = (tab: string) =>
+    tab === "tls"
+      ? "Automatic TLS"
+      : tab === "rules"
+        ? "Traffic rules"
+        : tab[0]!.toUpperCase() + tab.slice(1);
+  const breadcrumbItems: { label: string; href?: string }[] = [
+    { label: "Clusters", href: clusterIndexHref },
+  ];
+  if (installationSettings) {
+    breadcrumbItems.push(
+      { label: "Settings", href: haproxyPath(basePath, ["settings"]) },
+      { label: settingsTabs.find((tab) => tab.id === settingsTab)!.label },
+    );
+  } else if (cluster) {
+    breadcrumbItems.push({ label: cluster.name, href: href(["overview"]) });
+    const sectionLabel = haproxySections.find(
+      (section) => section.id === route.section,
+    )!.label;
+    if (route.kind === "application") {
+      const name =
+        applicationLabel?.key === `${cluster.id}/${route.id}`
+          ? applicationLabel.name
+          : (client
+              ?.cachedApplications(cluster.id)
+              ?.find((row) => row.application_id === route.id)?.spec.name ??
+            "Application");
+      breadcrumbItems.push(
+        { label: sectionLabel, href: href(["applications"]) },
+        {
+          label: name,
+          href: href(["applications", cluster.id, route.id, "overview"]),
+        },
+        { label: labelForTab(route.tab) },
+      );
+    } else if (route.section === "infrastructure") {
+      breadcrumbItems.push({
+        label: "Infrastructure",
+        href: href(["infrastructure"]),
+      });
+      if (route.kind === "node")
+        breadcrumbItems.push(
+          { label: "Nodes", href: href(["infrastructure"]) },
+          {
+            label: node?.name ?? "Node",
+            href: href(["infrastructure", "nodes", route.id, "metrics"]),
+          },
+          { label: labelForTab(route.tab) },
+        );
+      else
+        breadcrumbItems.push({
+          label: labelForTab(route.kind === "cluster" ? route.tab : "nodes"),
+        });
+    } else breadcrumbItems.push({ label: sectionLabel });
+  } else
+    breadcrumbItems.push({
+      label: route.kind === "not-found" ? "Page not found" : title,
+    });
+  useEffect(() => {
+    let canonical: string | undefined;
+    if (route.kind === "list" && route.section === "infrastructure" && cluster)
+      canonical = haproxyPath(basePath, [
+        "infrastructure",
+        "clusters",
+        cluster.id,
+        "nodes",
+      ]);
+    if (route.kind === "node" && !location.pathname.endsWith("/" + route.tab))
+      canonical = haproxyPath(basePath, [
+        "infrastructure",
+        "nodes",
+        route.id,
+        route.tab,
+      ]);
+    if (
+      route.kind === "application" &&
+      !location.pathname.endsWith("/" + route.tab)
+    )
+      canonical = haproxyPath(basePath, [
+        "applications",
+        route.clusterId,
+        route.id,
+        route.tab,
+      ]);
+    if (canonical && canonical !== location.pathname)
+      navigate(
+        { pathname: canonical, search: location.search },
+        { replace: true },
+      );
+  }, [location.pathname, location.search, cluster?.id, basePath, navigate]);
   return (
     <div className="cv-haproxy">
-      {!clusterIndex && (
-        <Breadcrumbs
-          items={[
-            { label: "Clusters", href: clusterIndexHref },
-            ...(cluster
-              ? [
-                  {
-                    label: cluster.name,
-                    ...(route.section === "overview" && route.kind === "list"
-                      ? {}
-                      : { href: href(["overview"]) }),
-                  },
-                ]
-              : []),
-            ...(installationSettings
-              ? [{ label: "Installation settings" }]
-              : route.kind === "node" || route.kind === "application"
-                ? [
-                    {
-                      label:
-                        route.section === "applications"
-                          ? "Applications"
-                          : "Infrastructure",
-                      href: href([route.section]),
-                    },
-                    {
-                      label:
-                        route.kind === "application" ? "Application" : title,
-                    },
-                  ]
-                : []),
-          ]}
-        />
-      )}
+      {!clusterIndex && <Breadcrumbs items={breadcrumbItems} />}
       {cluster && (
         <PageTabs
           aria-label="Cluster navigation"
@@ -279,11 +383,6 @@ export function HAProxyWorkspace({
             fleet ? (
               <>
                 {clusterIndex && (
-                  <AriaLink href={haproxyPath(basePath, ["settings"])}>
-                    Installation settings
-                  </AriaLink>
-                )}
-                {clusterIndex && (
                   <Button
                     variant="primary"
                     onPress={onCreateCluster}
@@ -292,7 +391,8 @@ export function HAProxyWorkspace({
                     Create cluster
                   </Button>
                 )}
-                {route.kind === "list" &&
+                {(route.kind === "list" ||
+                  (route.kind === "cluster" && route.tab === "nodes")) &&
                   route.section === "infrastructure" &&
                   cluster && (
                     <Button
@@ -341,26 +441,32 @@ export function HAProxyWorkspace({
           }
         />
       )}
-      {route.section === "infrastructure" &&
-        cluster &&
-        route.kind !== "node" && (
-          <PageTabs
-            aria-label="Infrastructure sections"
-            currentId={route.kind === "cluster" ? route.tab : "nodes"}
-            items={[
-              { id: "nodes", label: "Nodes", href: href(["infrastructure"]) },
-              ...clusterTabs.map((tab) => ({
-                id: tab,
-                label:
-                  tab === "tls"
-                    ? "Automatic TLS"
-                    : tab[0]!.toUpperCase() + tab.slice(1),
-                href: href(["infrastructure", "clusters", cluster.id, tab]),
-              })),
-            ]}
-          />
-        )}
-      <div hidden={!installationSettings}>{settingsContent}</div>
+      {route.section === "infrastructure" && cluster && (
+        <PageTabs
+          aria-label="Infrastructure sections"
+          currentId={route.kind === "cluster" ? route.tab : "nodes"}
+          items={clusterTabs.map((tab) => ({
+            id: tab,
+            label: labelForTab(tab),
+            href: href(["infrastructure", "clusters", cluster.id, tab]),
+          }))}
+        />
+      )}
+      {installationSettings && (
+        <PageTabs
+          aria-label="Settings navigation"
+          currentId={settingsTab}
+          items={settingsTabs.map((tab) => ({
+            ...tab,
+            href: haproxyPath(
+              basePath,
+              ["settings"],
+              "?settings_tab=" + tab.id,
+            ),
+          }))}
+        />
+      )}
+      {installationSettings && settingsTab === "access" && settingsContent}
       {route.kind === "not-found" ? (
         <EmptyState
           title="Page not found"
@@ -379,10 +485,7 @@ export function HAProxyWorkspace({
         <>
           {status}
           {fleet.partial && (
-            <InlineTip variant="warning">
-              Some observations are unavailable. Inventory remains visible;
-              missing data is not zero traffic.
-            </InlineTip>
+            <ConnectionIssue message="Some fleet observations are unavailable." />
           )}
           {!fleet.clusters.length && route.section !== "settings" ? (
             <EmptyState
@@ -547,6 +650,7 @@ export function HAProxyWorkspace({
                 ) : route.kind === "cluster" ? (
                   cluster ? (
                     <>
+                      {route.tab === "nodes" && nodeInventory}
                       {route.tab === "topology" &&
                         clusterOverview(cluster.id, "topology")}
                       {route.tab === "listeners" && (
@@ -584,18 +688,7 @@ export function HAProxyWorkspace({
                     />
                   )
                 ) : (
-                  <>
-                    <NodeInventory
-                      fleet={fleet}
-                      filter={filter}
-                      query={params.get("node_query") ?? ""}
-                      page={Math.trunc(Number(params.get("node_page"))) || 1}
-                      onQuery={(value) => setParam("node_query", value)}
-                      onPage={(value) => setParam("node_page", String(value))}
-                      href={(id) => href(["infrastructure", "nodes", id])}
-                      onOpen={openNode}
-                    />
-                  </>
+                  <>{nodeInventory}</>
                 ))}
               {route.section === "activity" && (
                 <>
@@ -635,74 +728,78 @@ export function HAProxyWorkspace({
             <>
               {!installationSettings && (
                 <AriaLink href={haproxyPath(basePath, ["settings"])}>
-                  Installation settings
+                  Settings
                 </AriaLink>
               )}
-              <Section
-                layout="stack"
-                title="Agent software"
-                description="Version observations from your nodes. Host installers verify signed releases; the agent never replaces itself."
-              >
-                <PaginatedDataTable
-                  aria-label="Agent software versions"
-                  itemLabel="nodes"
-                  rows={installationSettings ? fleet.nodes : scopedNodes}
-                  rowLabel={(n) => n.name}
-                  columns={[
-                    {
-                      id: "node",
-                      header: "Node",
-                      isRowHeader: true,
-                      cell: (n) => (
-                        <AriaLink
-                          href={href([
-                            "infrastructure",
-                            "nodes",
-                            n.id,
-                            "runtime",
-                          ])}
-                        >
-                          {n.name}
-                        </AriaLink>
-                      ),
-                    },
-                    {
-                      id: "version",
-                      header: "Agent version",
-                      cell: (n) => n.agent?.version ?? "Not reported",
-                    },
-                    {
-                      id: "fresh",
-                      header: "Observation",
-                      cell: (n) =>
-                        n.agent_fresh ? "Current" : "Last reported",
-                    },
-                  ]}
-                  emptyState={
-                    <EmptyState
-                      title="No agent versions yet"
-                      description="Enroll a node to see its reported software version."
-                    />
-                  }
-                />
-              </Section>
-              <Section
-                layout="stack"
-                title="Backups and recovery"
-                description="Back up management storage and each node’s identity, configuration and TLS keys. Manager backups cannot recover private node keys they never held."
-              >
-                <p>
-                  Installation upgrades and backups run on the host with the
-                  signed installer. Keep recovery copies encrypted and off-host.
-                </p>
-                <AriaLink
-                  href="https://github.com/ecraela/fleet/blob/main/docs/self-hosted-installation.md#encrypted-and-authenticated-backup"
-                  target="_blank"
-                  rel="noreferrer"
+              {(!installationSettings || settingsTab === "software") && (
+                <Section
+                  layout="stack"
+                  title="Agent software"
+                  description="Version observations from your nodes. Host installers verify signed releases; the agent never replaces itself."
                 >
-                  Installation and recovery guide
-                </AriaLink>
-              </Section>
+                  <PaginatedDataTable
+                    aria-label="Agent software versions"
+                    itemLabel="nodes"
+                    rows={installationSettings ? fleet.nodes : scopedNodes}
+                    rowLabel={(n) => n.name}
+                    columns={[
+                      {
+                        id: "node",
+                        header: "Node",
+                        isRowHeader: true,
+                        cell: (n) => (
+                          <AriaLink
+                            href={href([
+                              "infrastructure",
+                              "nodes",
+                              n.id,
+                              "runtime",
+                            ])}
+                          >
+                            {n.name}
+                          </AriaLink>
+                        ),
+                      },
+                      {
+                        id: "version",
+                        header: "Agent version",
+                        cell: (n) => n.agent?.version ?? "Not reported",
+                      },
+                      {
+                        id: "fresh",
+                        header: "Observation",
+                        cell: (n) =>
+                          n.agent_fresh ? "Current" : "Last reported",
+                      },
+                    ]}
+                    emptyState={
+                      <EmptyState
+                        title="No agent versions yet"
+                        description="Enroll a node to see its reported software version."
+                      />
+                    }
+                  />
+                </Section>
+              )}
+              {(!installationSettings || settingsTab === "recovery") && (
+                <Section
+                  layout="stack"
+                  title="Backups and recovery"
+                  description="Back up management storage and each node’s identity, configuration and TLS keys. Manager backups cannot recover private node keys they never held."
+                >
+                  <p>
+                    Installation upgrades and backups run on the host with the
+                    signed installer. Keep recovery copies encrypted and
+                    off-host.
+                  </p>
+                  <AriaLink
+                    href="https://github.com/ecraela/fleet/blob/main/docs/self-hosted-installation.md#encrypted-and-authenticated-backup"
+                    isExternal
+                  >
+                    Installation and recovery guide
+                  </AriaLink>
+                </Section>
+              )}
             </>
           )}
           {fleet.next_cursor && (

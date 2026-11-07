@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useRef, useState } from "react";
 import {
   Badge,
@@ -249,9 +250,7 @@ export function HAProxyRollouts({
     >
       <div className="cv-haproxy-configuration">
         {error && (
-          <InlineTip variant="warning">
-            {error} Last received rollout progress remains visible.
-          </InlineTip>
+          <ConnectionIssue message="Rollout progress: refresh interrupted; retrying automatically." />
         )}
         {!rows && !error && (
           <LoadingStatus delayMs={1000}>Loading cluster updates…</LoadingStatus>

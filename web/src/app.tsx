@@ -1,6 +1,8 @@
+import { ConnectionIssue, useConnectionHealth } from "./connection-health";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Badge,
+  StatusDot,
+  TooltipText,
   AccountMenu,
   Button,
   DialogForm,
@@ -11,6 +13,7 @@ import {
   InlineTip,
   LoadingStatus,
   Takeover,
+  IconButton,
   TextField,
   Section,
   MenuItem,
@@ -23,8 +26,29 @@ import { readTheme, saveTheme } from "./theme";
 import { passwordChangeErrors } from "./auth-forms";
 import { localRequest, LocalAuthError, type LocalSession } from "./auth";
 import { stopHAProxyClients } from "./haproxy-api";
-import { HAProxyView } from "./haproxy";
+import { HAProxyView, type ManagerConnectionStatus } from "./haproxy";
 import { ConvergeConnector } from "./connector";
+import { GitHub, Moon, Sun } from "@ecraela/ui/icons";
+import type { Theme } from "./theme";
+import ecraelaMark from "./assets/ecraela-mark.svg";
+
+function FleetBrand() {
+  return (
+    <Link
+      variant="plain"
+      className="hm-brand"
+      href="/"
+      aria-label="Ecraela Fleet"
+    >
+      <img src={ecraelaMark} alt="" width={24} height={24} />
+      <span className="hm-brand__company">Ecraela</span>
+      <span className="hm-brand__divider" aria-hidden="true">
+        /
+      </span>
+      <strong>Fleet</strong>
+    </Link>
+  );
+}
 
 function message(error: unknown): string {
   return error instanceof LocalAuthError
@@ -32,28 +56,30 @@ function message(error: unknown): string {
     : "The manager could not connect. Retry shortly.";
 }
 
-function TrademarkNotice() {
-  return (
-    <p className="hm-attribution">
-      HAProxy® is a registered trademark of HAProxy Technologies SAS. Ecraela
-      Fleet is not affiliated with or endorsed by HAProxy Technologies.
-    </p>
-  );
-}
-
 export function App() {
+  const connectionHealth = useConnectionHealth();
   const authEpoch = useRef(0);
   const [session, setSession] = useState<LocalSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sessionRefreshError, setSessionRefreshError] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [theme, setTheme] = useState(readTheme);
+  const [managerConnection, setManagerConnection] =
+    useState<ManagerConnectionStatus>("connecting");
+  const displayedConnection = connectionHealth.disconnected
+    ? "disconnected"
+    : connectionHealth.messages.length
+      ? "degraded"
+      : managerConnection;
   const expire = useCallback(() => {
     authEpoch.current++;
     stopHAProxyClients();
     setSession(null);
+    setManagerConnection("connecting");
+    setSessionRefreshError(false);
     setPasswordOpen(false);
   }, []);
   const check = useCallback(async () => {
@@ -62,22 +88,29 @@ export function App() {
       const current = await localRequest<LocalSession>("session");
       if (epoch !== authEpoch.current) return;
       setSession(current);
+      setSessionRefreshError(false);
       setError(null);
     } catch (e) {
       if (epoch !== authEpoch.current) return;
       if (e instanceof LocalAuthError && e.status === 401) {
         expire();
         setError(null);
-      } else setError(message(e));
+      } else {
+        setSessionRefreshError(true);
+        setError(message(e));
+      }
     } finally {
       setLoading(false);
     }
   }, [expire]);
   useEffect(() => {
     void check();
-    const timer = setInterval(() => {
-      if (document.visibilityState !== "hidden") void check();
-    }, 60_000);
+    const timer = setInterval(
+      () => {
+        if (document.visibilityState !== "hidden") void check();
+      },
+      sessionRefreshError ? 5_000 : 60_000,
+    );
     const focus = () => void check();
     window.addEventListener("focus", focus);
     window.addEventListener("haproxy-session-expired", expire);
@@ -86,7 +119,7 @@ export function App() {
       window.removeEventListener("focus", focus);
       window.removeEventListener("haproxy-session-expired", expire);
     };
-  }, [check, expire]);
+  }, [check, expire, sessionRefreshError]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     saveTheme(theme);
@@ -99,6 +132,7 @@ export function App() {
       expire();
       setError(null);
     } catch (e) {
+      setSessionRefreshError(false);
       setError(message(e));
     } finally {
       setSigningOut(false);
@@ -115,11 +149,14 @@ export function App() {
   if (!session)
     return (
       <Login
+        theme={theme}
+        onThemeChange={setTheme}
         error={error}
         notice={notice}
         onLogin={(s) => {
           authEpoch.current++;
           setSession(s);
+          setSessionRefreshError(false);
           setNotice(null);
           setError(null);
         }}
@@ -127,27 +164,74 @@ export function App() {
     );
   return (
     <div className="hm-shell">
+      {sessionRefreshError && (
+        <ConnectionIssue
+          connection
+          message="Session verification is temporarily unavailable. Retrying automatically."
+        />
+      )}
       <header className="hm-header">
         <div className="hm-header__identity">
-          <Link className="hm-brand" href="/">
-            Ecraela Fleet
-          </Link>
-          <Badge>Self-hosted</Badge>
+          <FleetBrand />
+          <span className="hm-connection">
+            <TooltipText
+              placement="bottom"
+              content={
+                connectionHealth.messages.length ? (
+                  <div>
+                    <strong>
+                      {connectionHealth.disconnected
+                        ? "Manager connection unavailable"
+                        : "Reconnecting"}
+                    </strong>
+                    <p>
+                      Last loaded data stays visible. Updates resume
+                      automatically.
+                    </p>
+                    {connectionHealth.messages.slice(0, 4).map((message) => (
+                      <p key={message}>{message}</p>
+                    ))}
+                  </div>
+                ) : (
+                  {
+                    connecting: "Connecting to the Fleet manager…",
+                    connected:
+                      "Connected to the Fleet manager. Inventory refreshed successfully.",
+                    degraded:
+                      "Some manager observations are incomplete. Updates continue automatically.",
+                    disconnected: "Cannot connect to the Fleet manager.",
+                    restricted:
+                      "Your account does not have permission to read manager inventory.",
+                  }[displayedConnection]
+                )
+              }
+            >
+              <StatusDot
+                tone={
+                  (
+                    {
+                      connecting: "neutral",
+                      connected: "success",
+                      degraded: "warning",
+                      disconnected: "error",
+                      restricted: "neutral",
+                    } as const
+                  )[displayedConnection]
+                }
+              />
+              <span className="cv-sr-only">
+                Manager connection: {displayedConnection}
+              </span>
+            </TooltipText>
+          </span>
         </div>
         <div className="hm-account">
           <AccountMenu
             user={{ name: session.username }}
             placement="bottom end"
-            description={`${session.role === "viewer" ? "Read-only" : "Administrator"} – Local account`}
             isPending={signingOut}
           >
-            <MenuItem href="/settings">Installation settings</MenuItem>
-            <MenuItem onAction={() => setPasswordOpen(true)}>
-              Change password
-            </MenuItem>
-            <MenuItem href="/legal/" target="_blank" rel="noopener">
-              License and source
-            </MenuItem>
+            <MenuItem href="/settings">Settings</MenuItem>
             <MenuSeparator />
             <ThemeMenuSection
               value={theme}
@@ -163,12 +247,13 @@ export function App() {
         </div>
       </header>
       <main className="hm-content">
-        {error && (
+        {error && !sessionRefreshError && (
           <InlineTip variant="error" role="alert">
             {error}
           </InlineTip>
         )}
         <HAProxyView
+          onConnectionStatus={setManagerConnection}
           key={session.user_id}
           settingsContent={
             <Section
@@ -176,10 +261,12 @@ export function App() {
               title="Local access"
               description="Your installation uses its own local accounts. A Converge connection is optional."
             >
-              <Button onPress={() => setPasswordOpen(true)}>
-                Change password
-              </Button>
-              <ConvergeConnector session={session} />
+              <div className="hm-access-actions">
+                <Button onPress={() => setPasswordOpen(true)}>
+                  Change password
+                </Button>
+                <ConvergeConnector session={session} />
+              </div>
             </Section>
           }
           organization={{
@@ -189,10 +276,29 @@ export function App() {
         />
       </main>
       <footer className="hm-legal">
-        <a className="cv-link" href="/legal/">
-          License and source
-        </a>
-        <TrademarkNotice />
+        <nav aria-label="Installation links" className="hm-legal__links">
+          <Link variant="plain" href="/settings">
+            Settings
+          </Link>
+          <a className="cv-link cv-link--plain" href="/legal/">
+            License &amp; source
+          </a>
+          <Link
+            variant="plain"
+            href="https://github.com/ecraela/fleet"
+            isExternal
+          >
+            <GitHub /> GitHub
+          </Link>
+        </nav>
+        <span className="hm-legal__version" aria-label="Release version">
+          {(() => {
+            const version = document.querySelector<HTMLMetaElement>(
+              'meta[name="fleet-version"]',
+            )?.content;
+            return !version || version.startsWith("__") ? "dev" : version;
+          })()}
+        </span>
       </footer>
       {passwordOpen && (
         <PasswordDrawer
@@ -210,10 +316,14 @@ export function App() {
   );
 }
 function Login({
+  theme,
+  onThemeChange,
   error,
   notice,
   onLogin,
 }: {
+  theme: Theme;
+  onThemeChange: (theme: Theme) => void;
   error: string | null;
   notice: string | null;
   onLogin: (s: LocalSession) => void;
@@ -247,16 +357,21 @@ function Login({
   }
   return (
     <Takeover
-      brand="Ecraela Fleet"
-      badge={<Badge>Self-hosted</Badge>}
-      title="Sign in to your installation"
+      variant="card"
+      brand={<FleetBrand />}
+      headerActions={
+        <IconButton
+          variant="ghost"
+          aria-label={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
+          onPress={() => onThemeChange(theme === "light" ? "dark" : "light")}
+        >
+          {theme === "light" ? <Moon /> : <Sun />}
+        </IconButton>
+      }
+      icon={<img src={ecraelaMark} alt="" width={38} height={38} />}
+      title="Welcome to Fleet"
       description="Manage your HAProxy® load balancers with your local account."
     >
-      <p className="hm-login-help">
-        <a className="cv-link" href="/legal/">
-          License and source
-        </a>
-      </p>
       <form
         className="hm-login-form"
         onSubmit={(e) => {
@@ -305,7 +420,11 @@ function Login({
           access or a password reset, contact them.
         </p>
       </form>
-      <TrademarkNotice />
+      <p className="hm-login-legal">
+        <a className="cv-link cv-link--plain" href="/legal/">
+          License and source
+        </a>
+      </p>
     </Takeover>
   );
 }

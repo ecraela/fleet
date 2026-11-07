@@ -129,7 +129,7 @@ describe("HAProxy workspace routes", () => {
       const html = render("/infrastructure" + search);
       expect(html).toContain('aria-label="Cluster navigation"');
       expect(html).toContain(
-        `/infrastructure/nodes/${node}?cluster=${cluster}&amp;range=6h&amp;node_query=proxy-a`,
+        `/infrastructure/nodes/${node}/metrics?cluster=${cluster}&amp;range=6h&amp;node_query=proxy-a`,
       );
       expect(html).toContain(
         `/applications?cluster=${cluster}&amp;range=6h&amp;node_query=proxy-a`,
@@ -159,7 +159,7 @@ describe("HAProxy workspace routes", () => {
           '<h1 class="cv-page-header__title">Infrastructure</h1>',
         );
         expect(tabs).toContain(
-          `/infrastructure?cluster=${cluster}&amp;range=6h&amp;node_query=proxy-a`,
+          `/infrastructure/clusters/${cluster}/nodes?cluster=${cluster}&amp;range=6h&amp;node_query=proxy-a`,
         );
         expect(tabs).toMatch(
           new RegExp(`aria-current="page"[^>]*><span>${label}</span>`),
@@ -175,9 +175,118 @@ describe("HAProxy workspace routes", () => {
       }
       expect(
         sections(render(`/infrastructure/nodes/${node}${search}`)),
-      ).toBeUndefined();
+      ).toContain("<span>Nodes</span>");
+      const breadcrumb = (markup: string) =>
+        markup.match(/<nav aria-label="Breadcrumb"[\s\S]*?<\/nav>/)?.[0] ?? "";
+      for (const section of haproxySections) {
+        const trail = breadcrumb(render(`/${section.id}${search}`));
+        expect(trail).toContain(`title="${section.label}"`);
+        expect(trail).toContain('title="Production"');
+      }
+      for (const tab of clusterTabs) {
+        const path = `/infrastructure/clusters/${cluster}/${tab}${search}`;
+        const trail = breadcrumb(render(path));
+        const label =
+          tab === "tls"
+            ? "Automatic TLS"
+            : tab[0]!.toUpperCase() + tab.slice(1);
+        expect(trail).toContain('title="Infrastructure"');
+        expect(trail).toContain(`aria-current="page" title="${label}"`);
+      }
+      const nodes = render(
+        `/infrastructure/clusters/${cluster}/nodes${search}`,
+      );
+      expect(nodes).toContain('aria-label="Find nodes"');
+      expect(nodes).toContain("Enroll node");
+      const nodeTrail = breadcrumb(
+        render(`/infrastructure/nodes/${node}/runtime${search}`),
+      );
+      for (const label of ["Infrastructure", "Nodes", "proxy-a", "Runtime"])
+        expect(nodeTrail).toContain(`title="${label}"`);
+      vi.spyOn(client, "cachedApplications").mockReturnValue([
+        {
+          id: "revision",
+          organization_id: org,
+          cluster_id: cluster,
+          application_id: "app",
+          number: 1,
+          request_id: "request",
+          rollout_id: "rollout",
+          created_at: "2026-10-28T00:00:00Z",
+          status: "succeeded",
+          spec: {
+            id: "app",
+            name: "Admin demo",
+            hostname: "apps.demo.test",
+            path_prefix: "/",
+            listener: "public",
+            algorithm: "roundrobin",
+            health_path: "/healthz",
+            servers: [],
+          },
+        },
+      ]);
+      const application = render(
+        `/applications/${cluster}/app/traffic${search}`,
+      );
+      const appTrail = breadcrumb(application);
+      for (const label of ["Applications", "Admin demo", "Traffic"])
+        expect(appTrail).toContain(`title="${label}"`);
+      expect(application).toContain(
+        `/applications/${cluster}/app/overview?cluster=`,
+      );
     } finally {
       client.dispose();
     }
   });
+});
+
+it("keeps settings tabs linkable and renders only the selected section", () => {
+  const client = new HAProxyClient(org);
+  try {
+    const render = (search: string) =>
+      renderToStaticMarkup(
+        <MemoryRouter initialEntries={["/settings" + search]}>
+          <HAProxyWorkspace
+            basePath=""
+            fleet={{
+              clusters: [],
+              nodes: [],
+              next_cursor: null,
+              partial: false,
+            }}
+            client={client}
+            loading={false}
+            status={null}
+            settingsContent={<p>Access settings panel</p>}
+            onRefresh={() => {}}
+            onCreateCluster={() => {}}
+            onEnroll={() => {}}
+            onRevoke={() => {}}
+            onLoadMore={async () => {}}
+          />
+        </MemoryRouter>,
+      );
+    const access = render("");
+    expect(access).toContain('aria-label="Settings navigation"');
+    expect(access).toContain('href="/settings?settings_tab=software"');
+    expect(access).toContain("Access settings panel");
+    expect(access).not.toContain("No agent versions yet");
+    expect(access).not.toContain("Installation and recovery guide");
+    const software = render("?settings_tab=software");
+    expect(software).toContain("No agent versions yet");
+    expect(software).not.toContain("Access settings panel");
+    expect(software).not.toContain("Installation and recovery guide");
+    const recovery = render("?settings_tab=recovery");
+    expect(recovery).toContain("Installation and recovery guide");
+    expect(recovery).toContain(
+      "https://github.com/ecraela/fleet/blob/main/docs/self-hosted-installation.md#encrypted-and-authenticated-backup",
+    );
+    expect(recovery).not.toContain("github.com/ecraela/haproxy-manager");
+    expect(recovery).not.toContain("Access settings panel");
+    expect(recovery).not.toContain("No agent versions yet");
+    expect(render("?settings_tab=unknown")).toContain("Access settings panel");
+  } finally {
+    client.dispose();
+  }
 });

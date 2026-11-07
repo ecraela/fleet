@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useRef, useState } from "react";
 import {
   Badge,
@@ -304,9 +305,7 @@ export function HAProxyMaintenancePanel({
     >
       <div className="cv-haproxy-configuration">
         {error && (
-          <InlineTip variant="warning">
-            {error} Last received progress remains visible.
-          </InlineTip>
+          <ConnectionIssue message="Maintenance progress: refresh interrupted; retrying automatically." />
         )}
         {!data && !error && (
           <LoadingStatus delayMs={1000}>

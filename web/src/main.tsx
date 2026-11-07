@@ -1,3 +1,4 @@
+import { ConnectionHealthProvider } from "./connection-health";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, useNavigate } from "react-router-dom";
@@ -20,7 +21,9 @@ function Routing() {
   const navigate = useNavigate();
   return (
     <RouterProvider navigate={navigate} useHref={useManagerHref}>
-      <App />
+      <ConnectionHealthProvider>
+        <App />
+      </ConnectionHealthProvider>
     </RouterProvider>
   );
 }

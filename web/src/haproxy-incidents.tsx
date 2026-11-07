@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useRef, useState } from "react";
 import {
   Badge,
@@ -308,9 +309,7 @@ export function HAProxyIncidents({
     >
       <div className="cv-haproxy-configuration">
         {error && (
-          <InlineTip variant="warning" title="Incidents could not refresh">
-            {error} Previously loaded incidents remain visible.
-          </InlineTip>
+          <ConnectionIssue message="Incidents: refresh interrupted; retrying automatically." />
         )}
         {stale && (
           <InlineTip variant="warning" title="Incident evaluation is delayed">

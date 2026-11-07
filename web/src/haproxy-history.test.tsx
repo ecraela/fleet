@@ -67,12 +67,22 @@ describe("HAProxy history", () => {
       "HTTP responses",
       "Active connections",
       "Backend response time",
-      "Last loaded history remains visible",
       "5xx",
       "application",
       "Inspect bandwidth",
     ])
       expect(html).toContain(label);
+    expect(html).not.toContain("History could not refresh");
+    const recovered = renderToStaticMarkup(
+      <HAProxyHistoryCharts
+        history={history}
+        range="1h"
+        loading={false}
+        error={false}
+        onRangeChange={() => {}}
+      />,
+    );
+    expect(html).toBe(recovered);
     expect(html).not.toContain("p99");
   });
 

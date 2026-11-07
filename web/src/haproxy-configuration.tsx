@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useRef, useState } from "react";
 import {
   Badge,
@@ -475,12 +476,7 @@ export function HAProxyConfiguration({
           </InlineTip>
         )}
         {error && (
-          <InlineTip
-            variant="warning"
-            title="Saved configuration could not refresh"
-          >
-            {error} Last received settings remain visible.
-          </InlineTip>
+          <ConnectionIssue message="Saved configuration: refresh interrupted; retrying automatically." />
         )}
         {actionError && !edit && !selected && (
           <InlineTip variant="error" role="alert">

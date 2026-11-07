@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import {
   applicationDraftErrors,
   normalizedHostname,
@@ -159,8 +160,10 @@ export function HAProxyApplications({
   onBack,
   query = "",
   onQueryChange,
+  onTitleChange,
 }: {
   applicationId?: string;
+  onTitleChange?: (id: string, name: string) => void;
   tab?: ApplicationTab;
   getHref?: (id: string, tab?: string) => string;
   onOpen?: (id: string, tab?: string) => void;
@@ -261,6 +264,13 @@ export function HAProxyApplications({
     };
   }, [client, cluster.id]);
   const latest = latestApplications(records ?? []);
+  const currentTitle = latest.find(
+    (row) => row.application_id === applicationId,
+  )?.spec.name;
+  useEffect(() => {
+    if (applicationId && currentTitle)
+      onTitleChange?.(applicationId, currentTitle);
+  }, [applicationId, currentTitle, onTitleChange]);
   const source = (r: HAProxyApplicationRevision) =>
     applicationEditSource(r, records ?? []);
   const visible = latest.filter(
@@ -544,9 +554,7 @@ export function HAProxyApplications({
     >
       <div className="cv-haproxy-configuration">
         {error && (
-          <InlineTip variant="warning">
-            {error} Last received applications remain visible.
-          </InlineTip>
+          <ConnectionIssue message="Applications: refresh interrupted; retrying automatically." />
         )}
         {notice && (
           <InlineTip role="status" label="Status">
@@ -554,10 +562,7 @@ export function HAProxyApplications({
           </InlineTip>
         )}
         {healthError && (
-          <InlineTip variant="warning">
-            Application checks could not refresh. Stale observations are shown
-            as unknown.
-          </InlineTip>
+          <ConnectionIssue message="Applications: refresh interrupted; retrying automatically." />
         )}
         {actionError && !draft && !changing && (
           <InlineTip variant="error" role="alert">

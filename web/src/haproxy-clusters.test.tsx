@@ -130,7 +130,7 @@ describe("cluster-first workspace", () => {
       expect(unknown).toContain("Cluster not found");
       expect(unknown).not.toContain("proxy-a");
       const settings = render("/settings");
-      expect(settings).toContain("Installation settings");
+      expect(settings).toContain(">Settings</h1>");
       expect(settings).toContain("Local sign-in settings");
       expect(settings).not.toContain('aria-label="Cluster navigation"');
     } finally {

@@ -1,8 +1,10 @@
 package webui
 
 import (
+	"github.com/ecraela/fleet/internal/buildinfo"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -85,5 +87,17 @@ func TestCountryFlagAssetsRemainLocalAndSeparateFromConsoleRoutes(t *testing.T) 
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/flags/4x3/gb.svg", nil))
 	if w.Code != 200 || w.Header().Get("Content-Type") != "image/svg+xml" || w.Header().Get("Cache-Control") != "public, max-age=86400" {
 		t.Fatal(w.Code, w.Header())
+	}
+}
+
+func TestConsoleReportsTheRunningReleaseVersion(t *testing.T) {
+	old := buildinfo.Version
+	buildinfo.Version = `v1.2.3"<test>`
+	t.Cleanup(func() { buildinfo.Version = old })
+	h := handler(fstest.MapFS{"index.html": {Data: []byte(`<meta name="fleet-version" content="__FLEET_RELEASE_VERSION__">`)}})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/settings", nil))
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `v1.2.3&#34;&lt;test&gt;`) || strings.Contains(w.Body.String(), "__FLEET_RELEASE_VERSION__") {
+		t.Fatalf("release version missing or not escaped: %s", w.Body.String())
 	}
 }

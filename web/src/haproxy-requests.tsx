@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { HAProxyCountryFilter } from "./haproxy-country-filter";
 import { geographyRequestFilters } from "./haproxy-geography-api";
 import { trafficRequestFilters } from "./haproxy-traffic-model";
@@ -719,10 +720,7 @@ function RequestResults({
         description="Recorded requests for this application, including monitoring checks through its listener. Shared frontend counters are kept separate."
       >
         {trafficError && (
-          <InlineTip variant="warning" title="Traffic could not refresh">
-            {trafficError}
-            {traffic && " Previously loaded data remains visible."}
-          </InlineTip>
+          <ConnectionIssue message="Recorded requests: refresh interrupted; retrying automatically." />
         )}
         {!traffic && !trafficError && (
           <LoadingStatus delayMs={1000}>
@@ -961,10 +959,7 @@ function RequestResults({
         description="Inspect completed requests by path, response, protocol, method, node and total time. Opening a row shows its configuration fingerprint and matching retained versions."
       >
         {requestError && (
-          <InlineTip variant="warning" title="Requests could not refresh">
-            {requestError}
-            {requests && " Previously loaded requests remain visible."}
-          </InlineTip>
+          <ConnectionIssue message="Recorded requests: refresh interrupted; retrying automatically." />
         )}
         {!requests && !requestError && (
           <LoadingStatus delayMs={1000}>Loading requests…</LoadingStatus>

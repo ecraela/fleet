@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useState } from "react";
 import {
   Badge,
@@ -256,10 +257,7 @@ export function HAProxyTrafficRules({
             </InlineTip>
           )}
           {loadError && (
-            <InlineTip variant="warning" role="alert">
-              Rule observations could not refresh. {loadError} Retained values
-              are not current evidence.
-            </InlineTip>
+            <ConnectionIssue message="Traffic rules: refresh interrupted; retrying automatically." />
           )}
           {counts && !counts.collection_complete && (
             <InlineTip variant="warning">

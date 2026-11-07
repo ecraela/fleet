@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import {
   useCallback,
   useEffect,
@@ -49,12 +50,17 @@ function mergeFleet(pages: HAProxyFleet[]): HAProxyFleet {
   };
 }
 
+export type ManagerConnectionStatus =
+  "connecting" | "connected" | "degraded" | "disconnected" | "restricted";
+
 export function HAProxyView({
   organization,
   settingsContent,
+  onConnectionStatus,
 }: {
   organization: Organization;
   settingsContent?: ReactNode;
+  onConnectionStatus?: (status: ManagerConnectionStatus) => void;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,6 +73,20 @@ export function HAProxyView({
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const managerConnection: ManagerConnectionStatus = !read
+    ? "restricted"
+    : connectionError
+      ? "degraded"
+      : refreshError
+        ? "degraded"
+        : !fleet
+          ? "connecting"
+          : fleet.partial
+            ? "degraded"
+            : "connected";
+  useEffect(() => {
+    onConnectionStatus?.(managerConnection);
+  }, [onConnectionStatus, managerConnection]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"cluster" | "enroll" | "revoke" | null>(
     null,
@@ -135,6 +155,14 @@ export function HAProxyView({
     const failConnection = (error: unknown) => {
       if (client.controller.signal.aborted || clientRef.current !== client)
         return;
+      if (!(
+        (error instanceof HAProxyError || error instanceof ApiError) &&
+        (error.status === 401 || error.status === 403)
+      )) {
+        setRefreshError(actionError(error));
+        setLoading(false);
+        return;
+      }
       setConnectionError(actionError(error));
       setFleet(null);
       setDialog(null);
@@ -155,16 +183,7 @@ export function HAProxyView({
       void client
         .refresh()
         .then(() => reload(client, undefined, true))
-        .catch((error: unknown) => {
-          if (client.controller.signal.aborted || clientRef.current !== client)
-            return;
-          if (
-            (error instanceof HAProxyError || error instanceof ApiError) &&
-            (error.status === 401 || error.status === 403)
-          )
-            failConnection(error);
-          else setRefreshError(actionError(error));
-        });
+        .catch(failConnection);
     }, 30_000);
     const observations = setInterval(() => {
       if (
@@ -172,9 +191,7 @@ export function HAProxyView({
         !loadingRef.current &&
         !client.controller.signal.aborted
       )
-        void reload(client, undefined, true).catch((error) =>
-          setRefreshError(actionError(error)),
-        );
+        void reload(client, undefined, true).catch(failConnection);
     }, 5_000);
     return () => {
       clearInterval(observations);
@@ -283,13 +300,21 @@ export function HAProxyView({
     />
   ) : !fleet ? (
     <LoadingStatus>Connecting to HAProxy…</LoadingStatus>
-  ) : refreshError ? (
-    <InlineTip variant="warning" title="Fleet could not refresh">
-      {refreshError} Last loaded inventory remains visible.
-    </InlineTip>
   ) : null;
   return (
     <div className="cv-haproxy">
+      {refreshError && (
+        <ConnectionIssue
+          connection
+          message="Fleet inventory: refresh interrupted; retrying automatically."
+        />
+      )}
+      {connectionError && (
+        <ConnectionIssue
+          connection
+          message="Cannot connect to the Fleet manager. Check the manager service and your network connection."
+        />
+      )}
       <HAProxyWorkspace
         basePath={basePath}
         fleet={fleet}

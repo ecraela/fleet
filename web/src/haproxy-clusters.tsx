@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useState } from "react";
 import {
   Badge,
@@ -269,10 +270,7 @@ export function HAProxyClusters({
         </InlineTip>
       )}
       {state.ids === ids && state.failed && (
-        <InlineTip variant="warning">
-          Some cluster charts could not refresh. Previously recorded traffic
-          remains visible; gaps are not zero traffic.
-        </InlineTip>
+        <ConnectionIssue message="Cluster charts: refresh interrupted; retrying automatically." />
       )}
       {state.ids === ids &&
         state.loading &&

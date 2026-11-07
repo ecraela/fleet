@@ -3,6 +3,8 @@ package webui
 
 import (
 	"embed"
+	"github.com/ecraela/fleet/internal/buildinfo"
+	"html"
 	"io/fs"
 	"net/http"
 	"path"
@@ -88,7 +90,7 @@ func handler(root fs.FS) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if r.Method != "HEAD" {
-			_, _ = w.Write(index)
+			_, _ = w.Write([]byte(strings.ReplaceAll(string(index), "__FLEET_RELEASE_VERSION__", html.EscapeString(buildinfo.Version))))
 		}
 	})
 }

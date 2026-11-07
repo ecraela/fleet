@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useState } from "react";
 import {
   Badge,
@@ -461,10 +462,7 @@ export function HAProxyClusterOverview({
         {view === "activity" && (
           <>
             {maintenanceError && (
-              <InlineTip variant="warning">
-                Maintenance progress could not refresh. Last received
-                reservations remain visible.
-              </InlineTip>
+              <ConnectionIssue message="Cluster observations: refresh interrupted; retrying automatically." />
             )}
             {maintenance.length > 0 && (
               <Section
@@ -544,19 +542,10 @@ export function HAProxyClusterOverview({
                   !node.observed_at ||
                   Date.now() - Date.parse(node.observed_at) > 5000,
               ) && (
-                <InlineTip variant="warning" title="Live updates reconnecting">
-                  The stream will retry automatically. Last received
-                  observations remain visible.
-                </InlineTip>
+                <ConnectionIssue message="Cluster observations: refresh interrupted; retrying automatically." />
               )}
             {state.key === key && state.failed && (
-              <InlineTip
-                variant="warning"
-                title="Some traffic history could not refresh"
-              >
-                Last received history remains visible. Missing observations
-                leave gaps.
-              </InlineTip>
+              <ConnectionIssue message="Cluster observations: refresh interrupted; retrying automatically." />
             )}
             <Section
               layout="stack"
