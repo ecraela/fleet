@@ -758,6 +758,7 @@
   "web/src/haproxy-runtime.test.tsx",
   "web/src/haproxy-runtime.tsx",
   "web/src/haproxy-setup.ts",
+  "web/src/haproxy-traffic-country-picker.tsx",
   "web/src/haproxy-traffic-model.test.ts",
   "web/src/haproxy-traffic-model.ts",
   "web/src/haproxy-traffic-rules.tsx",
