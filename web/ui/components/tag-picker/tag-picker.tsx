@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Plus, Tag } from "../../icons";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   Autocomplete,
   Button,
@@ -29,6 +29,8 @@ export interface TagOption {
 export interface TagPickerProps {
   label?: string;
   "aria-label"?: string;
+  description?: string;
+  isDisabled?: boolean;
   /**
    * Trigger button content. Defaults to a chip per selected item (falling
    * back to `emptyLabel` when nothing is selected) — pass this to override,
@@ -81,6 +83,8 @@ function resolveSelectedIds(
 export function TagPicker({
   label,
   "aria-label": ariaLabel,
+  description,
+  isDisabled = false,
   triggerLabel,
   emptyLabel = "Add labels",
   items,
@@ -96,6 +100,7 @@ export function TagPicker({
   className,
   onOpenChange,
 }: TagPickerProps) {
+  const descriptionId = useId();
   const { contains } = useFilter({ sensitivity: "base" });
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
@@ -140,6 +145,8 @@ export function TagPicker({
     >
       <Button
         {...(ariaLabel || label ? { "aria-label": ariaLabel ?? label } : {})}
+        {...(description ? { "aria-describedby": descriptionId } : {})}
+        isDisabled={isDisabled}
         className={cx("cv-tag-picker__trigger", className)}
       >
         {resolvedTriggerLabel}
@@ -250,6 +257,11 @@ export function TagPicker({
     <div className="cv-field cv-tag-picker--field">
       <span className="cv-field__label">{label}</span>
       {picker}
+      {description && (
+        <span id={descriptionId} className="cv-field__description">
+          {description}
+        </span>
+      )}
     </div>
   ) : (
     picker

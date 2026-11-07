@@ -39,6 +39,7 @@ import {
   type TrafficRuleCounts,
   type TrafficRuleDraft,
 } from "./haproxy-traffic-model";
+import { HAProxyTrafficCountryPicker } from "./haproxy-traffic-country-picker";
 
 const number = (n: number) => new Intl.NumberFormat().format(n);
 export function HAProxyTrafficRules({
@@ -542,11 +543,10 @@ export function HAProxyTrafficRules({
                       description="Comma-separated IP addresses or canonical CIDR networks. Single addresses use /32 or /128."
                       isDisabled={busy}
                     />
-                    <TextField
-                      label={`Rule ${i + 1} country codes`}
+                    <HAProxyTrafficCountryPicker
+                      label={`Rule ${i + 1} countries`}
                       value={r.countries}
                       onChange={(countries) => patch(i, { countries })}
-                      description="Two-letter codes, for example RU, GB or JP. Uses the host’s local Country map."
                       isDisabled={busy}
                     />
                     <TextField
