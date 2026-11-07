@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useRef, useState } from "react";
 import {
   Badge,
@@ -383,9 +384,7 @@ export function HAProxyListeners({
     >
       <div className="cv-haproxy-configuration">
         {error && (
-          <InlineTip variant="warning">
-            {error} Last received listener details remain visible.
-          </InlineTip>
+          <ConnectionIssue message="Listener details: refresh interrupted; retrying automatically." />
         )}
         {notice && <InlineTip role="status">{notice}</InlineTip>}
         {views.some((v) => !freshTLSView(v)) && (

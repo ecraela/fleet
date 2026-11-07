@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useRef, useState } from "react";
 import {
   Badge,
@@ -305,9 +306,7 @@ export function HAProxyRuntime({
     >
       <div className="cv-haproxy-runtime">
         {error && (
-          <InlineTip variant="warning" title="Configuration could not refresh">
-            {error} Last received discovery remains visible.
-          </InlineTip>
+          <ConnectionIssue message="Runtime configuration: refresh interrupted; retrying automatically." />
         )}
         {actionError && !edit && (
           <InlineTip variant="error" role="alert">

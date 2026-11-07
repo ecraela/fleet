@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useRef, useState } from "react";
 import {
   Badge,
@@ -391,9 +392,7 @@ export function HAProxyAutomaticTLS({
           </InlineTip>
         )}
         {error && (
-          <InlineTip variant="warning">
-            {error} Last received certificate details remain visible.
-          </InlineTip>
+          <ConnectionIssue message="Certificate details: refresh interrupted; retrying automatically." />
         )}
         {!view && !error ? (
           <LoadingStatus delayMs={1000}>

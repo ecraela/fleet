@@ -23,6 +23,7 @@ export const nodeTabs = [
 ] as const;
 export type NodeTab = (typeof nodeTabs)[number];
 export const clusterTabs = [
+  "nodes",
   "topology",
   "listeners",
   "tls",

@@ -1,6 +1,6 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useState } from "react";
 import {
-  InlineTip,
   LoadingStatus,
   Section,
   SegmentedControl,
@@ -187,16 +187,7 @@ export function HAProxyHistoryCharts({
       }
     >
       {error && (
-        <InlineTip
-          variant="warning"
-          title="History could not refresh"
-          role="status"
-        >
-          The query will retry automatically.{" "}
-          {history
-            ? "Last loaded history remains visible."
-            : "Live observations are shown separately."}
-        </InlineTip>
+        <ConnectionIssue message="Traffic history: refresh interrupted; retrying automatically." />
       )}
       {loading && history && history.range !== range && (
         <LoadingStatus delayMs={1000}>

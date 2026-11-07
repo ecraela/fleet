@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { HAProxyGeoSetup } from "./haproxy-geo-setup";
 import { useEffect, useState } from "react";
 import {
@@ -226,9 +227,7 @@ export function HAProxyApplicationGeography({
           </InlineTip>
         )}
         {error && (
-          <InlineTip variant="warning" title="Geography could not refresh">
-            {error} Previously loaded data remains visible.
-          </InlineTip>
+          <ConnectionIssue message="Geography: refresh interrupted; retrying automatically." />
         )}
         {!data && !error && (
           <LoadingStatus delayMs={1000}>Loading geography…</LoadingStatus>

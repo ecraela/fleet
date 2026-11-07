@@ -1,3 +1,4 @@
+import { ConnectionIssue } from "./connection-health";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   EmptyState,
@@ -118,14 +119,7 @@ export function HAProxyNodeDetail({
         ]}
       />
       {!node.revoked_at && status.reconnecting && (
-        <InlineTip
-          variant="warning"
-          label="Reconnecting to live observations"
-          role="status"
-        >
-          The connection will retry automatically. Last received observations
-          remain visible with their collection time.
-        </InlineTip>
+        <ConnectionIssue message="Live node observations: refresh interrupted; retrying automatically." />
       )}
       {!node.revoked_at && current && !status.fresh && !status.reconnecting && (
         <InlineTip

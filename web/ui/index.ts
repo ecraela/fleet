@@ -221,5 +221,7 @@ export {
 export {
   GeographyDistribution,
   globePoint,
+  rotateGlobe,
+  globeGrid,
   type GeographyDistributionProps,
 } from "./components/geography-distribution/geography-distribution";

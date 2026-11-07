@@ -37,20 +37,45 @@
   align-items: center;
   min-width: 0;
 }
-.cv-geo-distribution__map svg {
+.cv-geo-distribution__viewport {
   width: 100%;
-  max-width: calc(var(--cv-space-8) * 12);
+  max-width: calc(var(--cv-space-8) * 11);
+  border-radius: var(--cv-radius-2xl);
+}
+.cv-geo-distribution__viewport:focus-visible {
+  outline: 2px solid var(--cv-ring-focus);
+  outline-offset: var(--cv-space-1);
+}
+.cv-geo-distribution__map svg {
+  display: block;
+  width: 100%;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.cv-geo-distribution__viewport[data-dragging] svg {
+  cursor: grabbing;
+}
+.cv-geo-distribution__grid {
+  fill: none;
+  stroke: var(--cv-border-default);
+  stroke-width: 0.45;
+  opacity: 0.6;
+}
+.cv-geo-distribution__halo {
+  fill: var(--cv-chart-teal);
+  opacity: 0.18;
 }
 .cv-geo-distribution__ocean {
   fill: var(--cv-bg);
-  stroke: var(--cv-border-subtle);
+  stroke: var(--cv-border-default);
 }
 .cv-geo-distribution__land {
-  fill: var(--cv-chart-blue);
-  opacity: 0.45;
+  fill: var(--cv-text-default);
+  opacity: 0.8;
 }
 .cv-geo-distribution__marker {
-  fill: var(--cv-chart-blue);
+  fill: var(--cv-chart-teal);
   stroke: var(--cv-bg-panel);
   stroke-width: 1.5;
 }
