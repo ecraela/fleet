@@ -102,9 +102,18 @@ other applications.
 ## Evidence, availability and local assets
 
 HAProxy evaluates native rules and immutable local maps without a per-request
-call to the agent or manager. Loaded rules keep working during management or
+call to the agent or manager. For a country or ASN policy, the agent derives a
+map containing the selected values plus a compact marker for other known
+values. Addresses with no dataset match remain absent, so **Unknown client or
+lookup** keeps its meaning. IP-only policies load no Geo map; country-only
+policies load no ASN map. The full dataset snapshots remain on disk for later
+policy versions and rollback. Loaded rules keep working during management or
 telemetry outages. The agent exports only rule IDs, decisions and coarse Geo
 evidence; raw client IPs and forwarded headers remain node-local.
+
+Agents upgraded while a policy is active continue to recognize its previous
+full-map configuration and rollback artifacts. The next policy write uses the
+selected maps.
 
 Counts describe recorded requests for the exact application specification and
 selected range. Collection loss and stale/missing nodes are shown separately;

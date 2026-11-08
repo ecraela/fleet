@@ -7,11 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/ecraela/fleet/internal/accesslog"
 	"github.com/ecraela/fleet/internal/domain"
@@ -21,7 +24,10 @@ type TrafficPolicy struct {
 	Source             accesslog.GeoPolicy
 	LogSocket          string
 	CountryMap, ASNMap string
+	MapsDirectory      string
 	Capabilities       domain.TrafficCapabilities
+	mapMu              sync.Mutex
+	mapCache           map[string]string
 }
 type trafficGrant struct {
 	Version        int    `json:"version"`
@@ -178,6 +184,7 @@ func LoadTrafficPolicy(path, requestGeoPolicy string) (*TrafficPolicy, error) {
 		if err != nil || !info.IsDir() || info.Mode().Perm()&0022 != 0 {
 			return nil, errors.New("traffic map directory must exist and be owner-writable")
 		}
+		p.MapsDirectory = g.MapsDirectory
 		for _, kind := range []string{"country", "asn"} {
 			data, err := geo.MapSnapshot(kind)
 			if err != nil {
@@ -255,6 +262,117 @@ func retainTrafficMap(dir string, data []byte) (string, error) {
 	return path, nil
 }
 
+type trafficMapEntry struct {
+	prefix netip.Prefix
+	value  string
+}
+
+// Unknown lookups must remain absent. Known values outside the policy are
+// represented by a sentinel, then adjacent equal prefixes are coalesced.
+func compactTrafficMap(source []byte, selected map[string]bool, other string) ([]byte, error) {
+	entries := make([]trafficMapEntry, 0)
+	for len(source) > 0 {
+		end := bytes.IndexByte(source, '\n')
+		if end < 0 {
+			return nil, errors.New("invalid traffic map line")
+		}
+		line := source[:end]
+		separator := bytes.LastIndexByte(line, ' ')
+		if separator < 1 || separator == len(line)-1 {
+			return nil, errors.New("invalid traffic map entry")
+		}
+		prefix, err := netip.ParsePrefix(string(line[:separator]))
+		if err != nil || prefix != prefix.Masked() {
+			return nil, errors.New("invalid traffic map prefix")
+		}
+		value := string(line[separator+1:])
+		if !selected[value] {
+			value = other
+		}
+		entries = append(entries, trafficMapEntry{prefix: prefix, value: value})
+		for len(entries) > 1 {
+			last := len(entries) - 1
+			left, right := entries[last-1], entries[last]
+			if left.value != right.value || left.prefix.Bits() != right.prefix.Bits() || left.prefix.Bits() == 0 || left.prefix.Addr().Is4() != right.prefix.Addr().Is4() {
+				break
+			}
+			parent := netip.PrefixFrom(left.prefix.Addr(), left.prefix.Bits()-1).Masked()
+			if parent != netip.PrefixFrom(right.prefix.Addr(), right.prefix.Bits()-1).Masked() || left.prefix == right.prefix {
+				break
+			}
+			entries[last-1] = trafficMapEntry{prefix: parent, value: left.value}
+			entries = entries[:last]
+		}
+		source = source[end+1:]
+	}
+	var out bytes.Buffer
+	for _, entry := range entries {
+		out.WriteString(entry.prefix.String())
+		out.WriteByte(' ')
+		out.WriteString(entry.value)
+		out.WriteByte('\n')
+		if out.Len() > 64<<20 {
+			return nil, errors.New("compiled traffic map exceeds local bound")
+		}
+	}
+	return out.Bytes(), nil
+}
+
+func (p *TrafficPolicy) selectedMap(source, kind string, values []string) (string, error) {
+	if len(values) == 0 {
+		return "", nil
+	}
+	if source == "" {
+		return "", failure("configuration_unsupported")
+	}
+	if p.MapsDirectory == "" { // Synthetic dataplane fixtures have no local map assets.
+		return source, nil
+	}
+	values = slices.Clone(values)
+	slices.Sort(values)
+	values = slices.Compact(values)
+	key := kind + ":" + source + ":" + strings.Join(values, ",")
+	p.mapMu.Lock()
+	defer p.mapMu.Unlock()
+	if cached := p.mapCache[key]; cached != "" {
+		data, err := localTrafficFile(cached, 64<<20)
+		if err != nil || filepath.Base(cached) != trafficMapName(data) {
+			return "", failure("configuration_unavailable")
+		}
+		return cached, nil
+	}
+	data, err := localTrafficFile(source, 64<<20)
+	if err != nil || filepath.Base(source) != trafficMapName(data) {
+		return "", failure("configuration_unavailable")
+	}
+	selected := make(map[string]bool, len(values))
+	for _, value := range values {
+		selected[value] = true
+	}
+	other := "__other__"
+	if kind == "asn" {
+		other = "0"
+	}
+	compact, err := compactTrafficMap(data, selected, other)
+	if err != nil {
+		return "", failure("configuration_unavailable")
+	}
+	path, err := retainTrafficMap(p.MapsDirectory, compact)
+	if err != nil {
+		return "", failure("configuration_storage_full")
+	}
+	if p.mapCache == nil {
+		p.mapCache = make(map[string]string)
+	}
+	p.mapCache[key] = path
+	return path, nil
+}
+
+func trafficMapName(data []byte) string {
+	sum := sha256.Sum256(data)
+	return "cv_geo_v1_" + hex.EncodeToString(sum[:]) + ".map"
+}
+
 func trafficVariable(name, expression, condition string) object {
 	r := object{}
 	set(r, "type", "set-var")
@@ -278,7 +396,7 @@ func trafficUnset(name, condition string) object {
 	}
 	return r
 }
-func (p *TrafficPolicy) addressRules() []object {
+func (p *TrafficPolicy) addressRules(countryMap, asnMap string) []object {
 	rules := []object{trafficUnset("cv_ip", ""), trafficUnset("cv_bad", ""), trafficUnset("cv_country", ""), trafficUnset("cv_asn", "")}
 	ip := "{ var(txn.cv_ip) -m found }"
 	trust := "{ var(sess.cv_peer) -m ip " + strings.Join(p.Source.TrustedProxies, " ") + " }"
@@ -310,16 +428,42 @@ func (p *TrafficPolicy) addressRules() []object {
 	}
 	rules = append(rules, trafficUnset("cv_ip", "{ var(txn.cv_ip) -m ip 0.0.0.0/32 ::/128 224.0.0.0/4 ff00::/8 }"))
 	public := ip + " !{ var(txn.cv_ip) -m ip 0.0.0.0/8 10.0.0.0/8 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 ::/128 ::1/128 fc00::/7 fe80::/10 ff00::/8 }"
-	if p.CountryMap != "" {
-		rules = append(rules, trafficVariable("cv_country", "var(txn.cv_ip),map_ip("+p.CountryMap+")", public))
+	if countryMap != "" {
+		rules = append(rules, trafficVariable("cv_country", "var(txn.cv_ip),map_ip("+countryMap+")", public))
 	}
-	if p.ASNMap != "" {
-		rules = append(rules, trafficVariable("cv_asn", "var(txn.cv_ip),map_ip("+p.ASNMap+")", public))
+	if asnMap != "" {
+		rules = append(rules, trafficVariable("cv_asn", "var(txn.cv_ip),map_ip("+asnMap+")", public))
 	}
 	return rules
 }
-func (p *TrafficPolicy) rules(policy *domain.TrafficPolicy) []object {
-	rules := p.addressRules()
+func (p *TrafficPolicy) rules(policy *domain.TrafficPolicy) ([]object, error) {
+	var countries, asns []string
+	for _, rule := range policy.Rules {
+		countries = append(countries, rule.Countries...)
+		for _, asn := range rule.ASNs {
+			asns = append(asns, strconv.FormatUint(uint64(asn), 10))
+		}
+	}
+	countryMap, err := p.selectedMap(p.CountryMap, "country", countries)
+	if err != nil {
+		return nil, err
+	}
+	asnMap, err := p.selectedMap(p.ASNMap, "asn", asns)
+	if err != nil {
+		return nil, err
+	}
+	return p.rulesForMaps(policy, countryMap, asnMap), nil
+}
+
+// Existing configurations and historical rollback artifacts may still refer
+// to the original full snapshots. They are accepted as owned state, but new
+// application writes always use the selected maps above.
+func (p *TrafficPolicy) legacyRules(policy *domain.TrafficPolicy) []object {
+	return p.rulesForMaps(policy, p.CountryMap, p.ASNMap)
+}
+
+func (p *TrafficPolicy) rulesForMaps(policy *domain.TrafficPolicy, countryMap, asnMap string) []object {
+	rules := p.addressRules(countryMap, asnMap)
 	rules = append(rules, trafficVariable("cv_rule", "str(none)", ""), trafficVariable("cv_decision", "str(none)", ""))
 	first := "{ var(txn.cv_rule) -m str none }"
 	country, asn := false, false

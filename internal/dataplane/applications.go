@@ -88,11 +88,17 @@ func (c *Client) projectApplications(backends []object) ([]object, []domain.HTTP
 			}
 		}
 		expected, err := c.applicationBackend(a)
-		if err != nil {
-			return nil, nil, err
-		}
-		if normalizedObject(owned) != normalizedObject(expected) {
-			return nil, nil, failure("configuration_unsupported")
+		if err != nil || normalizedObject(owned) != normalizedObject(expected) {
+			if a.TrafficPolicy == nil || a.Disabled {
+				if err != nil {
+					return nil, nil, err
+				}
+				return nil, nil, failure("configuration_unsupported")
+			}
+			legacy, err := c.applicationBackendWithTraffic(a, true)
+			if err != nil || normalizedObject(owned) != normalizedObject(legacy) {
+				return nil, nil, failure("configuration_unsupported")
+			}
 		}
 		if a.Disabled {
 			// An owned empty backend preserves route precedence and returns 503.
@@ -171,6 +177,9 @@ func applicationBackend(a domain.HTTPApplication) object {
 	return b
 }
 func (c *Client) applicationBackend(a domain.HTTPApplication) (object, error) {
+	return c.applicationBackendWithTraffic(a, false)
+}
+func (c *Client) applicationBackendWithTraffic(a domain.HTTPApplication, legacy bool) (object, error) {
 	if a.TrafficPolicy != nil && (c.Traffic == nil || !a.TrafficPolicy.Supported(&c.Traffic.Capabilities)) {
 		return nil, failure("configuration_unsupported")
 	}
@@ -191,7 +200,17 @@ func (c *Client) applicationBackend(a domain.HTTPApplication) (object, error) {
 		}})
 	}
 	if a.TrafficPolicy != nil && !a.Disabled {
-		set(b, "http_request_rule_list", append(decode[[]object](b["http_request_rule_list"]), c.Traffic.rules(a.TrafficPolicy)...))
+		var rules []object
+		if legacy {
+			rules = c.Traffic.legacyRules(a.TrafficPolicy)
+		} else {
+			var err error
+			rules, err = c.Traffic.rules(a.TrafficPolicy)
+			if err != nil {
+				return nil, err
+			}
+		}
+		set(b, "http_request_rule_list", append(decode[[]object](b["http_request_rule_list"]), rules...))
 	}
 	servers := map[string]object{}
 	for _, s := range a.Servers {

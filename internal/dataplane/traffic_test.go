@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -82,11 +83,118 @@ func TestTrafficAssetsAreLocalImmutableAndShareTheClientPolicy(t *testing.T) {
 	if _, err = LoadTrafficPolicy(grant, ipPath); err != nil {
 		t.Fatal("idempotent asset stage", err)
 	}
+	policy := &domain.TrafficPolicy{Version: 1, Mode: "enforce", UnknownAction: "block", Rules: []domain.TrafficRule{{ID: domain.NewID(), Name: "Country", Action: "block", Countries: []string{"GB"}}}}
+	rules, err := p.rules(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapFor := func(name string) string {
+		for _, rule := range rules {
+			if decode[string](rule["var_name"]) == name {
+				expression := decode[string](rule["var_expr"])
+				if strings.Contains(expression, "map_ip(") {
+					return strings.TrimSuffix(strings.SplitAfter(expression, "map_ip(")[1], ")")
+				}
+			}
+		}
+		return ""
+	}
+	countryMap := mapFor("cv_country")
+	if mapFor("cv_asn") != "" {
+		t.Fatal("country-only policy loaded ASN map")
+	}
+	if countryMap == "" || countryMap == p.CountryMap {
+		t.Fatal("country policy did not select a compact map", countryMap)
+	}
+	legacy := p.legacyRules(policy)
+	if dependencyProfile(legacy) == dependencyProfile(rules) || !p.matchesRuleProfile(policy, dependencyProfile(legacy)) {
+		t.Fatal("historical full-map rules cannot be validated after upgrade")
+	}
+	a := testApplication("/shop")
+	a.RequestTelemetry = true
+	a.TrafficPolicy = policy
+	c := &Client{Traffic: p}
+	oldBackend, err := c.applicationBackendWithTraffic(a, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, apps, err := c.projectApplications([]object{oldBackend}); err != nil || len(apps) != 1 {
+		t.Fatal("historical full-map backend cannot be observed after upgrade", err)
+	}
+	selected, err := os.ReadFile(countryMap)
+	if err != nil || !strings.Contains(string(selected), " GB\n") || !strings.Contains(string(selected), " __other__\n") {
+		t.Fatal("selected and other known countries missing", err)
+	}
+	if len(selected) >= len(before) {
+		t.Fatal("country map was not reduced")
+	}
+	second, err := p.rules(policy)
+	if err != nil || dependencyProfile(rules) != dependencyProfile(second) {
+		t.Fatal("selected map was not stable", err)
+	}
+	policy.Rules[0].Countries = nil
+	policy.Rules[0].CIDRs = []string{"198.51.100.0/24"}
+	rules, err = p.rules(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mapFor("cv_country") != "" || mapFor("cv_asn") != "" {
+		t.Fatal("IP-only policy loaded a Geo map")
+	}
+	fullASN, err := os.ReadFile(p.ASNMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := strings.Fields(strings.SplitN(string(fullASN), "\n", 2)[0])
+	n, err := strconv.ParseUint(first[1], 10, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy.Rules[0].CIDRs = nil
+	policy.Rules[0].ASNs = []uint32{uint32(n)}
+	rules, err = p.rules(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mapFor("cv_country") != "" {
+		t.Fatal("ASN-only policy loaded country map")
+	}
+	asnMap := mapFor("cv_asn")
+	if asnMap == "" || asnMap == p.ASNMap {
+		t.Fatal("ASN policy did not select a compact map", asnMap)
+	}
+	selectedASN, err := os.ReadFile(asnMap)
+	if err != nil || !strings.Contains(string(selectedASN), " "+strconv.FormatUint(n, 10)+"\n") || !strings.Contains(string(selectedASN), " 0\n") {
+		t.Fatal("selected and other known ASNs missing", err)
+	}
+	if err := os.WriteFile(countryMap, []byte("changed"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	policy.Rules[0].ASNs = nil
+	policy.Rules[0].Countries = []string{"GB"}
+	if _, err := p.rules(policy); err == nil {
+		t.Fatal("tampered selected map reused")
+	}
+	if _, apps, err := c.projectApplications([]object{oldBackend}); err != nil || len(apps) != 1 || !p.matchesRuleProfile(policy, dependencyProfile(legacy)) {
+		t.Fatal("historical policy became unreadable when selected map was unavailable", err)
+	}
 	if os.WriteFile(p.CountryMap, []byte("changed"), 0644) != nil {
 		t.Fatal("tamper")
 	}
 	if _, err = LoadTrafficPolicy(grant, ipPath); err == nil {
 		t.Fatal("tampered immutable map reused")
+	}
+}
+
+func TestTrafficMapCompactionPreservesUnknownAndCoalescesOther(t *testing.T) {
+	source := []byte("10.0.0.0/8 RO\n11.0.0.0/8 DE\n12.0.0.0/8 FI\n13.0.0.0/8 DE\n2001:db8::/32 RO\n")
+	compact, err := compactTrafficMap(source, map[string]bool{"RO": true}, "__other__")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "10.0.0.0/8 RO\n11.0.0.0/8 __other__\n12.0.0.0/7 __other__\n2001:db8::/32 RO\n"
+	if string(compact) != want || strings.Contains(string(compact), "14.0.0.0") {
+		t.Fatalf("compaction changed lookup semantics:\n%s", compact)
 	}
 }
 
