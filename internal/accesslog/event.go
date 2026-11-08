@@ -14,7 +14,7 @@ import (
 	"github.com/ecraela/fleet/internal/domain"
 )
 
-const MaxBatch = 256
+const MaxBatch = 512
 const MaxPayload = 256 << 10
 const QueueSize = 2048
 

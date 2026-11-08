@@ -191,7 +191,7 @@ headers/cookies and bodies are excluded. A fingerprint can match multiple
 identical application versions; the observation ID is not a client trace ID.
 
 Collection is best effort with no intentional sampling: 2 KiB datagrams, 2,048
-queued records, 256-record/256 KiB batches, a separate sender/transport and short
+queued records, 512-record/256 KiB batches, a separate sender/transport and short
 deadlines. No disk spool or ambiguous-write retries are present. Status exposes
 per-process received, ignored, rejected, queue-drop and unconfirmed counters
 across the node's apps; boot UUID changes distinguish resets. Unconfirmed sends
