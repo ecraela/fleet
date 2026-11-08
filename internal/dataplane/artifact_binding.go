@@ -41,7 +41,11 @@ func (c *Client) retainBinding(id string, doc domain.ConfigurationDocument, fron
 	b := artifactBinding{Version: 1, ArtifactID: id, Document: doc.Canonical(), CertificatePaths: map[string]string{}, LogProfiles: map[string]string{}, TrafficRules: map[string]string{}}
 	for _, a := range doc.Applications {
 		if a.TrafficPolicy != nil && !a.Disabled && c.Traffic != nil {
-			b.TrafficRules[a.ID] = dependencyProfile(c.Traffic.rules(a.TrafficPolicy))
+			rules, err := c.Traffic.rules(a.TrafficPolicy)
+			if err != nil {
+				return err
+			}
+			b.TrafficRules[a.ID] = dependencyProfile(rules)
 		}
 	}
 	for _, f := range frontends {
@@ -145,8 +149,11 @@ func (c *Client) validateBinding(id string, doc domain.ConfigurationDocument, fr
 		if a.TrafficPolicy != nil && (c.Traffic == nil || !a.TrafficPolicy.Supported(&c.Traffic.Capabilities)) {
 			return failure("configuration_rejected")
 		}
-		if a.TrafficPolicy != nil && !a.Disabled && b.TrafficRules[a.ID] != dependencyProfile(c.Traffic.rules(a.TrafficPolicy)) {
-			return failure("configuration_rejected")
+		if a.TrafficPolicy != nil && !a.Disabled {
+			rules, err := c.Traffic.rules(a.TrafficPolicy)
+			if err != nil || b.TrafficRules[a.ID] != dependencyProfile(rules) {
+				return failure("configuration_rejected")
+			}
 		}
 		if !a.RequestTelemetry {
 			continue

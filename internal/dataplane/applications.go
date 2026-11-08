@@ -191,7 +191,11 @@ func (c *Client) applicationBackend(a domain.HTTPApplication) (object, error) {
 		}})
 	}
 	if a.TrafficPolicy != nil && !a.Disabled {
-		set(b, "http_request_rule_list", append(decode[[]object](b["http_request_rule_list"]), c.Traffic.rules(a.TrafficPolicy)...))
+		rules, err := c.Traffic.rules(a.TrafficPolicy)
+		if err != nil {
+			return nil, err
+		}
+		set(b, "http_request_rule_list", append(decode[[]object](b["http_request_rule_list"]), rules...))
 	}
 	servers := map[string]object{}
 	for _, s := range a.Servers {
