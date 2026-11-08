@@ -106,6 +106,21 @@ func TestTrafficAssetsAreLocalImmutableAndShareTheClientPolicy(t *testing.T) {
 	if countryMap == "" || countryMap == p.CountryMap {
 		t.Fatal("country policy did not select a compact map", countryMap)
 	}
+	legacy := p.legacyRules(policy)
+	if dependencyProfile(legacy) == dependencyProfile(rules) || !p.matchesRuleProfile(policy, dependencyProfile(legacy)) {
+		t.Fatal("historical full-map rules cannot be validated after upgrade")
+	}
+	a := testApplication("/shop")
+	a.RequestTelemetry = true
+	a.TrafficPolicy = policy
+	c := &Client{Traffic: p}
+	oldBackend, err := c.applicationBackendWithTraffic(a, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, apps, err := c.projectApplications([]object{oldBackend}); err != nil || len(apps) != 1 {
+		t.Fatal("historical full-map backend cannot be observed after upgrade", err)
+	}
 	selected, err := os.ReadFile(countryMap)
 	if err != nil || !strings.Contains(string(selected), " GB\n") || !strings.Contains(string(selected), " __other__\n") {
 		t.Fatal("selected and other known countries missing", err)
@@ -159,6 +174,9 @@ func TestTrafficAssetsAreLocalImmutableAndShareTheClientPolicy(t *testing.T) {
 	policy.Rules[0].Countries = []string{"GB"}
 	if _, err := p.rules(policy); err == nil {
 		t.Fatal("tampered selected map reused")
+	}
+	if _, apps, err := c.projectApplications([]object{oldBackend}); err != nil || len(apps) != 1 || !p.matchesRuleProfile(policy, dependencyProfile(legacy)) {
+		t.Fatal("historical policy became unreadable when selected map was unavailable", err)
 	}
 	if os.WriteFile(p.CountryMap, []byte("changed"), 0644) != nil {
 		t.Fatal("tamper")

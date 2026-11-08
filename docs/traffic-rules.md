@@ -111,6 +111,10 @@ policy versions and rollback. Loaded rules keep working during management or
 telemetry outages. The agent exports only rule IDs, decisions and coarse Geo
 evidence; raw client IPs and forwarded headers remain node-local.
 
+Agents upgraded while a policy is active continue to recognize its previous
+full-map configuration and rollback artifacts. The next policy write uses the
+selected maps.
+
 Counts describe recorded requests for the exact application specification and
 selected range. Collection loss and stale/missing nodes are shown separately;
 these are not billing-grade totals. Request search accepts typed

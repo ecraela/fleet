@@ -452,6 +452,17 @@ func (p *TrafficPolicy) rules(policy *domain.TrafficPolicy) ([]object, error) {
 	if err != nil {
 		return nil, err
 	}
+	return p.rulesForMaps(policy, countryMap, asnMap), nil
+}
+
+// Existing configurations and historical rollback artifacts may still refer
+// to the original full snapshots. They are accepted as owned state, but new
+// application writes always use the selected maps above.
+func (p *TrafficPolicy) legacyRules(policy *domain.TrafficPolicy) []object {
+	return p.rulesForMaps(policy, p.CountryMap, p.ASNMap)
+}
+
+func (p *TrafficPolicy) rulesForMaps(policy *domain.TrafficPolicy, countryMap, asnMap string) []object {
 	rules := p.addressRules(countryMap, asnMap)
 	rules = append(rules, trafficVariable("cv_rule", "str(none)", ""), trafficVariable("cv_decision", "str(none)", ""))
 	first := "{ var(txn.cv_rule) -m str none }"
@@ -501,5 +512,5 @@ func (p *TrafficPolicy) rules(policy *domain.TrafficPolicy) ([]object, error) {
 		set(deny, "cond_test", "{ var(txn.cv_decision) -m str block }")
 		rules = append(rules, deny)
 	}
-	return rules, nil
+	return rules
 }
