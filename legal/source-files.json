@@ -123,6 +123,7 @@
   "internal/acmeissuer/issue_test.go",
   "internal/acmeissuer/policy.go",
   "internal/agent/accesslog.go",
+  "internal/agent/accesslog_test.go",
   "internal/agent/acme.go",
   "internal/agent/agent.go",
   "internal/agent/agent_test.go",

@@ -21,9 +21,23 @@ func accessLoop(ctx context.Context, cfg Config, trust *x509.CertPool, receiver 
 	readDone := make(chan struct{})
 	go func() { defer close(readDone); receiver.Run(ctx) }()
 	defer func() { receiver.Close(); <-readDone }()
+	sendAccessLoop(ctx, cfg, trust, receiver)
+}
+
+type accessSource interface {
+	Drain() []accesslog.Event
+	Snapshot() accesslog.Pipeline
+	Unconfirmed(int)
+}
+
+func sendAccessLoop(ctx context.Context, cfg Config, trust *x509.CertPool, receiver accessSource) {
 	u, _ := url.Parse(cfg.IngestURL)
 	u.Path = "/v1/logs/write"
-	ticker := time.NewTicker(250 * time.Millisecond)
+	// The original 256-record batch every 250 ms capped collection at 1,024
+	// requests/s per node, below ordinary pilot traffic. Keep the faster
+	// bounded drain below the ingest budget of 100 uploads per ten seconds;
+	// a 100 ms tick can exceed that fixed window at its boundary.
+	ticker := time.NewTicker(125 * time.Millisecond)
 	defer ticker.Stop()
 	var client *http.Client
 	var certificate string
