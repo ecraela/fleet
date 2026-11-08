@@ -55,6 +55,9 @@ key next to an untrusted archive and treat that as publisher verification. No
 unsigned mode or mutable Docker image tag is supported. Public Sigstore signing
 records workflow identity/artifact digests in its transparency service; use the
 offline profile if that metadata must remain private.
+The [non-Actions release runbook](release-without-actions.md) describes how to
+qualify that distinct publisher; the current generated enrollment commands
+still require the GitHub Actions Sigstore release route.
 
 ## Install
 

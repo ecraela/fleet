@@ -33,7 +33,7 @@ import uuid
 import types
 
 
-AGENTCTL_SHA256 = '01e3f37fc1e56fed24e8c32cfe7899dbcfa98f6e9fe52e79977e2dfda1c99d11'
+AGENTCTL_SHA256 = 'c1aad9a4eb248a4ed3b3b7c6b4810dd18bf66ab4c3348836579830e85c17b387'
 
 
 def load_agentctl():
@@ -143,7 +143,7 @@ class SignedRelease(dict):
         self.files = files
 
 
-def release(folder, version, key=None):
+def release(folder, version, key=None, repository=trust.REPOSITORY):
     folder = Path(folder)
     signature = 'release.sig' if key else 'release.sigstore.json'
     names = ('release.json', signature, 'selfhost.json', 'agentctl.py', 'selfhostctl.py')
@@ -154,7 +154,10 @@ def release(folder, version, key=None):
     with tempfile.TemporaryDirectory(prefix='hm-release-') as tmp:
         for name, body in files.items():
             write(Path(tmp) / name, body)
-        verified, publisher = trust._verify_release(Path(tmp), version, key)
+        if repository == trust.REPOSITORY:
+            verified, publisher = trust._verify_release(Path(tmp), version, key)
+        else:
+            verified, publisher = trust._verify_release(Path(tmp), version, key, repository)
     manifest = SignedRelease(verified, files)
     for name in ('selfhost.json', 'agentctl.py', 'selfhostctl.py'):
         if hashlib.sha256(files[name]).hexdigest() != manifest['artifacts'].get(name):
@@ -597,25 +600,51 @@ def compatible(old, candidate):
 
 
 def change(args):
-    manifest, profile, publisher = release(args.release, args.version, args.public_key)
     root = private_directory(args.directory)
     with locked(root):
         c, h = configuration(root), load(root / 'deployment.json')
         if h.get('pending') or not h.get('current') or h.get('restored_stopped'):
             raise Error('Recover or activate this installation before changing its release')
-        if h['trust'] != publisher:
-            raise Error('The release publisher trust root changed')
+        old, old_trust = h['current'], h['trust']
+        if args.action == 'migrate':
+            source_folder = getattr(args, 'source_release', None)
+            if old.get('repository') != trust.PREDECESSOR_REPOSITORY or not source_folder or not old_trust:
+                raise Error('Migration requires the installed predecessor release and its signed bundle')
+            source, source_profile, source_publisher = release(
+                source_folder, old['version'], getattr(args, 'source_public_key', None),
+                trust.PREDECESSOR_REPOSITORY)
+            if source != old or source_profile != h['profile'] or source_publisher != old_trust:
+                raise Error('Predecessor release, storage profile or publisher differs from installed state')
+            manifest, profile, publisher = release(args.release, args.version, args.public_key)
+            if trust.version_tuple(manifest['version']) <= trust.version_tuple(old['version']):
+                raise Error('Migration requires a newer Fleet release')
+        elif args.action == 'rollback':
+            previous = h.get('previous')
+            if not previous or previous.get('repository') not in (trust.REPOSITORY, trust.PREDECESSOR_REPOSITORY):
+                raise Error('Rollback requires a retained signed release')
+            manifest, profile, publisher = release(args.release, args.version, args.public_key,
+                                                   previous['repository'])
+            expected_trust = h.get('previous_trust', old_trust if previous['repository'] == old['repository'] else None)
+            if manifest != previous or publisher != expected_trust:
+                raise Error('Rollback is limited to the retained previous signed release and publisher')
+        else:
+            manifest, profile, publisher = release(args.release, args.version, args.public_key)
+            if old.get('repository') != trust.REPOSITORY or old_trust != publisher:
+                raise Error('The release publisher trust root changed; use the explicit migration action')
         if state_identity(root) != h['identity']:
             raise Error('Installation identity or key is missing/changed; restore it, never reinitialize')
         compatible(h['profile'], profile)
         if args.action == 'upgrade' and trust.version_tuple(manifest['version']) <= trust.version_tuple(h['current']['version']):
             raise Error('Upgrade requires a newer exact release')
-        if args.action == 'rollback' and manifest != h.get('previous'):
-            raise Error('Software rollback is limited to the retained previous signed release')
+        if args.action == 'migrate':
+            retain(root, source)
         engine = Engine(root, c)
+        if args.action == 'migrate':
+            engine.prepare(source, source_profile)
         engine.prepare(manifest, profile)
         retain(root, manifest)
-        h['pending'] = {'action': args.action, 'release': manifest, 'profile': profile}
+        h['pending'] = {'action': args.action, 'release': manifest, 'profile': profile,
+                        'trust': publisher}
         trust.private_json(root / 'deployment.json', h)
         try:
             engine.stop(('manager', 'ingest'))
@@ -633,7 +662,8 @@ def change(args):
             except BaseException:
                 raise Error('Upgrade/recovery needs attention; pending state and previous release are preserved') from None
             raise Error('Candidate failed readiness; the previous release is running again') from None
-        h.update(previous=h['current'], current=manifest, profile=profile, pending=None,
+        h.update(previous=old, previous_trust=old_trust, current=manifest, trust=publisher,
+                 profile=profile, pending=None,
                  last_result=args.action, completed_at=int(time.time()))
         trust.private_json(root / 'deployment.json', h)
         print(json.dumps({'result': args.action, 'version': manifest['version']}))
@@ -645,7 +675,7 @@ def recover(args):
         c, h = configuration(root), load(root / 'deployment.json')
         if not h.get('pending'):
             raise Error('No interrupted installation operation')
-        if h['pending'].get('action') not in ('install', 'upgrade', 'rollback'):
+        if h['pending'].get('action') not in ('install', 'upgrade', 'migrate', 'rollback'):
             raise Error('An incomplete restore stays stopped; repeat restoration into a fresh directory')
         if state_identity(root) != h['identity']:
             raise Error('Installation identity changed; automatic recovery is refused')
@@ -1037,13 +1067,15 @@ def node_restore(args):
 def main():
     global ERROR_LOG
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=('install', 'upgrade', 'rollback', 'recover', 'status', 'stop',
+    p.add_argument('action', choices=('install', 'upgrade', 'migrate', 'rollback', 'recover', 'status', 'stop',
                                       'backup', 'restore', 'activate', 'node-backup', 'node-restore', 'verify',
                                       'connector-configure'))
     p.add_argument('--directory', type=Path, help='private installation/new restore directory')
     p.add_argument('--release', type=Path)
     p.add_argument('--version')
     p.add_argument('--public-key', type=Path, help='independently provisioned offline release publisher key')
+    p.add_argument('--source-release', type=Path, help='installed predecessor signed bundle, required for migration')
+    p.add_argument('--source-public-key', type=Path, help='predecessor offline release publisher key, if used')
     p.add_argument('--origin')
     p.add_argument('--bind-address', default='127.0.0.1')
     p.add_argument('--manager-port', type=int)
@@ -1068,7 +1100,8 @@ def main():
         p.error('timeout must be 5–180 seconds')
     required = {
         'install': ('directory', 'release', 'version', 'origin', 'password_file'),
-        'upgrade': ('directory', 'release', 'version'), 'rollback': ('directory', 'release', 'version'),
+        'upgrade': ('directory', 'release', 'version'), 'migrate': ('directory', 'release', 'version', 'source_release'),
+        'rollback': ('directory', 'release', 'version'),
         'verify': ('release', 'version'), 'recover': ('directory',), 'status': ('directory',),
         'stop': ('directory',), 'activate': ('directory',),
         'backup': ('directory', 'backup', 'recipient', 'signing_key'),
@@ -1078,6 +1111,8 @@ def main():
         'connector-configure': ('directory', 'connector_relay_url')}
     if any(getattr(args, key) is None for key in required[args.action]):
         p.error('required options: ' + ', '.join('--' + key.replace('_', '-') for key in required[args.action]))
+    if args.action != 'migrate' and (args.source_release or args.source_public_key):
+        p.error('predecessor release options are only valid for migration')
     if args.directory:
         args.directory = args.directory.absolute()
         ERROR_LOG = args.directory / 'last-error.log'
@@ -1088,7 +1123,7 @@ def main():
         args.manager_port = args.manager_port or 8443
         args.ingest_port = args.ingest_port or 9443
         install(args)
-    elif args.action in ('upgrade', 'rollback'):
+    elif args.action in ('upgrade', 'migrate', 'rollback'):
         change(args)
     elif args.action == 'recover':
         recover(args)
@@ -1113,7 +1148,9 @@ def main():
                 print(json.dumps({'result': 'stopped'}))
             else:
                 print(json.dumps({'version': (h.get('current') or {}).get('version'),
+                                  'publisher': (h.get('current') or {}).get('repository'),
                                   'previous_version': (h.get('previous') or {}).get('version'),
+                                  'previous_publisher': (h.get('previous') or {}).get('repository'),
                                   'pending': bool(h.get('pending')), 'last_result': h.get('last_result'),
                                   'console': c['origin'], 'project': c['project']}))
 

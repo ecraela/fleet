@@ -31,6 +31,7 @@ import time
 VERSION = re.compile(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[a-z0-9.-]+)?\Z')
 DIGEST = re.compile(r'[a-f0-9]{64}\Z')
 REPOSITORY = 'ecraela/fleet'
+PREDECESSOR_REPOSITORY = 'ecraela/haproxy-manager'
 MAX_BINARY = 96 << 20
 LEGAL_ARTIFACTS = ('LICENSE', 'THIRD_PARTY_NOTICES.txt', 'dependencies.json', 'source.tar.gz', 'source.json')
 SYSTEMD_UNIT_DIRS = ('/etc/systemd/system', '/run/systemd/system', '/usr/lib/systemd/system', '/lib/systemd/system')
@@ -91,9 +92,11 @@ def verify_release(folder, expected, public_key=None):
     return _verify_release(folder, expected, public_key)[0]
 
 
-def _verify_release(folder, expected, public_key=None):
+def _verify_release(folder, expected, public_key=None, repository=REPOSITORY):
     if not VERSION.fullmatch(expected):
         raise InstallError('An exact vMAJOR.MINOR.PATCH release is required')
+    if repository not in (REPOSITORY, PREDECESSOR_REPOSITORY):
+        raise InstallError('Unsupported release publisher')
     folder = Path(folder).resolve(strict=True)
     raw = regular(folder / 'release.json', 65536)
     # Authenticate exact bytes before trusting image names, paths or versions.
@@ -117,16 +120,16 @@ def _verify_release(folder, expected, public_key=None):
                  '-rawin','-in',manifest,'-sigfile',snapshot/'release.sig'])
         else:
             (snapshot/'release.sigstore.json').write_bytes(regular(folder/'release.sigstore.json',1<<20))
-            trust = 'sigstore:' + REPOSITORY
+            trust = 'sigstore:' + repository
             run(['cosign','verify-blob','--bundle',snapshot/'release.sigstore.json',
-                 '--certificate-identity',f'https://github.com/{REPOSITORY}/.github/workflows/release.yml@refs/tags/{expected}',
+                 '--certificate-identity',f'https://github.com/{repository}/.github/workflows/release.yml@refs/tags/{expected}',
                  '--certificate-oidc-issuer','https://token.actions.githubusercontent.com',manifest])
     m = json.loads(raw)
-    if (m.get('schema') != 1 or m.get('repository') != REPOSITORY or
+    if (m.get('schema') != 1 or m.get('repository') != repository or
             m.get('version') != expected or m.get('protocol') != 1 or m.get('state_schema') != 1 or
             not re.fullmatch(r'[a-f0-9]{40}', m.get('revision', ''))):
         raise InstallError('Release version, repository, protocol or state format is incompatible')
-    if not re.fullmatch(r'(?:ghcr\.io/ecraela/fleet@)?sha256:[a-f0-9]{64}', m.get('image', '')):
+    if not re.fullmatch(r'(?:ghcr\.io/' + re.escape(repository) + r'@)?sha256:[a-f0-9]{64}', m.get('image', '')):
         raise InstallError('A signed registry digest is required; mutable tags are refused')
     if not isinstance(m.get('artifacts'), dict) or not 1 <= len(m['artifacts']) <= 12:
         raise InstallError('Invalid release artifact set')
@@ -388,34 +391,56 @@ def wait_healthy(c, release, since, previous, timeout):
     raise InstallError('New agent did not report fresh successful HAProxy metrics before the deadline')
 
 
-def apply(c, folder, version, key=None, action='upgrade', timeout=45, adapter=None):
-    release,trust = _verify_release(folder, version, key)
+def apply(c, folder, version, key=None, action='upgrade', timeout=45, adapter=None,
+          source_folder=None, source_key=None):
     with locked(c) as root:
         record = root / 'deployment.json'
         history = json.loads(regular(record)) if record.exists() else {'schema': 1, 'current': None, 'previous': None}
         if history.get('pending'):
             raise InstallError('An interrupted upgrade is pending. Run recover before any new change')
         old = history['current']
-        if old and history.get('trust') != trust:
-            raise InstallError('Release trust root changed; provision rotation separately')
         if action != 'install' and not old:
             raise InstallError('No managed release; install a signed baseline first')
         if action == 'install' and old:
             raise InstallError('Already installed; use upgrade or rollback')
+        old_trust = history.get('trust')
+        if action == 'migrate':
+            if old['repository'] != PREDECESSOR_REPOSITORY or not source_folder or not old_trust:
+                raise InstallError('Migration requires the installed predecessor release and its signed bundle')
+            source, source_trust = _verify_release(source_folder, old['version'], source_key,
+                                                   PREDECESSOR_REPOSITORY)
+            if source != old or source_trust != old_trust:
+                raise InstallError('Predecessor release or publisher differs from installed state')
+            release, trust = _verify_release(folder, version, key)
+            if version_tuple(version) <= version_tuple(old['version']):
+                raise InstallError('Migration requires a newer Fleet release')
+        elif action == 'rollback':
+            previous = history.get('previous')
+            if not previous or previous.get('repository') not in (REPOSITORY, PREDECESSOR_REPOSITORY):
+                raise InstallError('Rollback requires a retained signed release')
+            release, trust = _verify_release(folder, version, key, previous['repository'])
+            expected_trust = history.get('previous_trust', old_trust if previous['repository'] == old['repository'] else None)
+            if release != previous or trust != expected_trust:
+                raise InstallError('Rollback is limited to the retained previous signed release and publisher')
+        else:
+            release, trust = _verify_release(folder, version, key)
+            if old and (old.get('repository') != REPOSITORY or old_trust != trust):
+                raise InstallError('Release trust root changed; use the explicit migration action')
         existing = identity(c['state_dir']) if (Path(c['state_dir']) / 'identity.json').exists() else None
         if not existing and action != 'install':
             raise InstallError('Missing identity; refusing to enroll during upgrade or rollback')
+        if old and existing != history.get('identity'):
+            raise InstallError('Node identity or key differs from the installed release')
         if action == 'upgrade' and old and version_tuple(version) <= version_tuple(old['version']):
             raise InstallError('Upgrade requires a newer version; use rollback for the retained release')
-        if action == 'rollback' and (not history['previous'] or release != history['previous']):
-            raise InstallError('Rollback is limited to the retained previous signed release')
         engine = adapter or (Docker(c, root) if c['mode'] == 'docker' else Linux(c, root))
+        if action == 'migrate':
+            engine.prepare(source, Path(source_folder))
         engine.prepare(release, Path(folder))
         # A durable transaction marker precedes the first process change. The
         # old image/binary is kept locally. Rollback never rewinds identity,
         # renewed certificates, ACME account state or command journals.
-        history['trust'] = trust
-        history['pending'] = {'release': release, 'identity': existing, 'started_at': time.time()}
+        history['pending'] = {'release': release, 'trust': trust, 'identity': existing, 'started_at': time.time()}
         private_json(record, history)
         since = time.time()
         try:
@@ -439,7 +464,8 @@ def apply(c, folder, version, key=None, action='upgrade', timeout=45, adapter=No
                 history['last_result'] = 'install_failed'
                 private_json(record, history)
             raise
-        history.update(current=release, previous=old, pending=None, last_result=action,
+        history.update(current=release, previous=old, trust=trust, previous_trust=old_trust,
+                       pending=None, last_result=action,
                        identity=identity(c['state_dir']), completed_at=time.time())
         private_json(record, history)
         print(json.dumps({'version': version, 'result': action, 'node_id': history['identity']['node_id']}))
@@ -469,21 +495,29 @@ def recover(c, timeout):
         engine.switch(target)
         wait_healthy(c, target, since, existing, timeout)
         history.update(current=target, identity=existing, pending=None, last_result='recovered')
+        if history.get('current') == pending['release'] and pending.get('trust'):
+            history['trust'] = pending['trust']
         private_json(record, history)
         print(json.dumps({'result': 'recovered', 'version': history['current']['version']}))
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=['install', 'upgrade', 'rollback', 'recover', 'status', 'verify'])
+    p.add_argument('action', choices=['install', 'upgrade', 'migrate', 'rollback', 'recover', 'status', 'verify'])
     p.add_argument('--config', type=Path)
     p.add_argument('--release', type=Path, help='downloaded release directory; never executes remote scripts')
     p.add_argument('--version', help='exact version, including v prefix')
     p.add_argument('--public-key', type=Path, help='independently provisioned Ed25519 public key for offline signatures')
+    p.add_argument('--source-release', type=Path, help='installed predecessor signed bundle, required for migration')
+    p.add_argument('--source-public-key', type=Path, help='predecessor offline release publisher key, if used')
     p.add_argument('--timeout', type=int, default=45)
     args = p.parse_args()
     if not 5 <= args.timeout <= 120:
         p.error('timeout must be 5–120 seconds')
+    if args.action == 'migrate' and (not args.source_release or not args.release or not args.version):
+        p.error('migration requires --source-release, --release and --version')
+    if args.action != 'migrate' and (args.source_release or args.source_public_key):
+        p.error('predecessor release options are only valid for migration')
     if args.action == 'verify':
         print(json.dumps(verify_release(args.release, args.version, args.public_key)))
         return
@@ -491,12 +525,15 @@ def main():
     if args.action == 'status':
         v = json.loads(regular(Path(c['install_dir']) / 'deployment.json'))
         print(json.dumps({'version': (v.get('current') or {}).get('version'),
+                          'publisher': (v.get('current') or {}).get('repository'),
                           'previous_version': (v.get('previous') or {}).get('version'),
+                          'previous_publisher': (v.get('previous') or {}).get('repository'),
                           'pending': bool(v.get('pending')), 'last_result': v.get('last_result')}))
     elif args.action == 'recover':
         recover(c, args.timeout)
     else:
-        apply(c, args.release, args.version, args.public_key, args.action, args.timeout)
+        apply(c, args.release, args.version, args.public_key, args.action, args.timeout,
+              source_folder=args.source_release, source_key=args.source_public_key)
 
 
 if __name__ == '__main__':

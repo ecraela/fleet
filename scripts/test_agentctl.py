@@ -26,7 +26,7 @@ class Releases(unittest.TestCase):
         ctl.private_json(self.state / 'identity.json', {'node': {'id': 'node-a'}, 'key_pem': 'synthetic-preserved-key', 'certificate_pem': 'synthetic-cert'})
         self.c = {'mode': 'docker', 'state_dir': str(self.state), 'install_dir': str(self.root / 'software')}
 
-    def release(self, version='v0.1.0', **changes):
+    def release(self, version='v0.1.0', signing_key=None, **changes):
         folder = self.root / version
         folder.mkdir(exist_ok=True)
         m = {'schema': 1, 'repository': ctl.REPOSITORY, 'version': version, 'revision': 'a'*40,
@@ -34,7 +34,8 @@ class Releases(unittest.TestCase):
              'artifacts': {'haproxy-agent-linux-arm64': 'c'*64}}
         m.update(changes)
         (folder / 'release.json').write_text(json.dumps(m))
-        ctl.run(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin', '-in', folder / 'release.json', '-out', folder / 'release.sig'])
+        ctl.run(['openssl', 'pkeyutl', '-sign', '-inkey', signing_key or self.key,
+                 '-rawin', '-in', folder / 'release.json', '-out', folder / 'release.sig'])
         return folder, m
 
     def test_real_signature_and_exact_version(self):
@@ -63,6 +64,20 @@ class Releases(unittest.TestCase):
             path, _ = self.release(**change)
             with self.assertRaises(ctl.InstallError):
                 ctl.verify_release(path, 'v0.1.0', self.pub)
+
+    def test_predecessor_sigstore_verification_uses_its_exact_workflow_and_tag(self):
+        path, manifest = self.release(repository=ctl.PREDECESSOR_REPOSITORY,
+                                      image='ghcr.io/ecraela/haproxy-manager@sha256:' + 'b' * 64)
+        (path / 'release.sigstore.json').write_text('{}')
+        with patch.object(ctl, 'run') as verifier:
+            verified, publisher = ctl._verify_release(path, 'v0.1.0',
+                                                       repository=ctl.PREDECESSOR_REPOSITORY)
+        self.assertEqual(verified, manifest)
+        self.assertEqual(publisher, 'sigstore:' + ctl.PREDECESSOR_REPOSITORY)
+        command = verifier.call_args.args[0]
+        self.assertEqual(command[0:2], ['cosign', 'verify-blob'])
+        self.assertEqual(command[command.index('--certificate-identity') + 1],
+                         'https://github.com/ecraela/haproxy-manager/.github/workflows/release.yml@refs/tags/v0.1.0')
 
     def test_fleet_image_requires_the_exact_signed_digest(self):
         path, manifest = self.release(image='ghcr.io/ecraela/fleet@sha256:' + 'b' * 64)
@@ -135,7 +150,8 @@ class Releases(unittest.TestCase):
     def engine(self, fail=None):
         class Engine:
             calls = []
-            def prepare(s, m, folder): pass
+            prepared = []
+            def prepare(s, m, folder): s.prepared.append(m['repository'])
             def switch(s, m):
                 s.calls.append(m['version'])
                 if m['version'] == fail:
@@ -156,6 +172,99 @@ class Releases(unittest.TestCase):
             ctl.apply(self.c, baseline, 'v0.1.0', self.pub, 'rollback', adapter=engine)
         self.assertEqual(engine.calls, ['v0.1.0', 'v0.1.1', 'v0.1.0'])
         self.assertEqual(before, {p.name: p.read_bytes() for p in self.state.iterdir()})
+
+    def test_explicit_migration_verifies_both_publishers_and_retains_rollback(self):
+        source_key, source_pub = self.root / 'predecessor.key', self.root / 'predecessor.pub'
+        ctl.run(['openssl', 'genpkey', '-algorithm', 'ED25519', '-out', source_key])
+        ctl.run(['openssl', 'pkey', '-in', source_key, '-pubout', '-out', source_pub])
+        source, old = self.release(repository=ctl.PREDECESSOR_REPOSITORY,
+                                   image='ghcr.io/ecraela/haproxy-manager@sha256:' + 'b' * 64,
+                                   signing_key=source_key)
+        candidate, new = self.release('v0.1.1')
+        root = Path(self.c['install_dir'])
+        root.mkdir(mode=0o700)
+        old_trust = hashlib.sha256(source_pub.read_bytes()).hexdigest()
+        new_trust = hashlib.sha256(self.pub.read_bytes()).hexdigest()
+        ctl.private_json(root / 'deployment.json', {'schema': 1, 'current': old, 'previous': None,
+                         'trust': old_trust, 'identity': ctl.identity(self.state), 'pending': None})
+        before = {p.name: p.read_bytes() for p in self.state.iterdir()}
+        engine = self.engine()
+        with patch.object(ctl, 'wait_healthy'):
+            with self.assertRaisesRegex(ctl.InstallError, 'explicit migration'):
+                ctl.apply(self.c, candidate, 'v0.1.1', self.pub, adapter=engine)
+            ctl.apply(self.c, candidate, 'v0.1.1', self.pub, 'migrate', adapter=engine,
+                      source_folder=source, source_key=source_pub)
+            migrated = json.loads((root / 'deployment.json').read_text())
+            self.assertEqual((migrated['current'], migrated['previous']), (new, old))
+            self.assertEqual((migrated['trust'], migrated['previous_trust']), (new_trust, old_trust))
+            ctl.apply(self.c, source, 'v0.1.0', source_pub, 'rollback', adapter=engine)
+        rolled_back = json.loads((root / 'deployment.json').read_text())
+        self.assertEqual((rolled_back['current'], rolled_back['previous']), (old, new))
+        self.assertEqual((rolled_back['trust'], rolled_back['previous_trust']), (old_trust, new_trust))
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.state.iterdir()})
+        self.assertEqual(engine.calls, ['v0.1.1', 'v0.1.0'])
+        self.assertEqual(engine.prepared, [ctl.PREDECESSOR_REPOSITORY, ctl.REPOSITORY,
+                                           ctl.PREDECESSOR_REPOSITORY])
+
+    def test_migration_rejects_wrong_source_and_preserves_old_trust_on_failure(self):
+        source, old = self.release(repository=ctl.PREDECESSOR_REPOSITORY)
+        candidate, _ = self.release('v0.1.1')
+        root = Path(self.c['install_dir'])
+        root.mkdir(mode=0o700)
+        old_trust = hashlib.sha256(self.pub.read_bytes()).hexdigest()
+        ctl.private_json(root / 'deployment.json', {'schema': 1, 'current': old, 'previous': None,
+                         'trust': old_trust, 'identity': ctl.identity(self.state), 'pending': None})
+        engine = self.engine(fail='v0.1.1')
+        with self.assertRaisesRegex(ctl.InstallError, 'explicit migration'):
+            ctl.apply(self.c, candidate, 'v0.1.1', self.pub, adapter=engine)
+        wrong_key = self.root / 'wrong.pub'
+        ctl.run(['openssl', 'genpkey', '-algorithm', 'ED25519', '-out', self.root / 'wrong.key'])
+        ctl.run(['openssl', 'pkey', '-in', self.root / 'wrong.key', '-pubout', '-out', wrong_key])
+        with self.assertRaises(ctl.InstallError):
+            ctl.apply(self.c, candidate, 'v0.1.1', self.pub, 'migrate', adapter=engine,
+                      source_folder=source, source_key=wrong_key)
+        self.assertEqual(engine.calls, [])
+        changed = {**old, 'revision': 'd' * 40}
+        (source / 'release.json').write_text(json.dumps(changed))
+        ctl.run(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                 '-in', source / 'release.json', '-out', source / 'release.sig'])
+        with self.assertRaisesRegex(ctl.InstallError, 'differs from installed state'):
+            ctl.apply(self.c, candidate, 'v0.1.1', self.pub, 'migrate', adapter=engine,
+                      source_folder=source, source_key=self.pub)
+        (source / 'release.json').write_text(json.dumps(old))
+        ctl.run(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                 '-in', source / 'release.json', '-out', source / 'release.sig'])
+        with patch.object(ctl, 'wait_healthy'), self.assertRaises(ctl.InstallError):
+            ctl.apply(self.c, candidate, 'v0.1.1', self.pub, 'migrate', adapter=engine,
+                      source_folder=source, source_key=self.pub)
+        after = json.loads((root / 'deployment.json').read_text())
+        self.assertEqual(after['current'], old)
+        self.assertEqual(after['trust'], old_trust)
+        self.assertIsNone(after['pending'])
+        self.assertEqual(after['last_result'], 'automatic_rollback')
+
+    def test_interrupted_migration_recovers_predecessor_without_changing_trust(self):
+        _, old = self.release(repository=ctl.PREDECESSOR_REPOSITORY)
+        _, candidate = self.release('v0.1.1')
+        root = Path(self.c['install_dir'])
+        root.mkdir(mode=0o700)
+        old_trust = hashlib.sha256(self.pub.read_bytes()).hexdigest()
+        identity = ctl.identity(self.state)
+        ctl.private_json(root / 'deployment.json', {
+            'schema': 1, 'current': old, 'previous': None, 'trust': old_trust,
+            'identity': identity, 'pending': {
+                'release': candidate, 'trust': 'new-publisher', 'identity': identity,
+                'started_at': time.time(),
+            },
+        })
+        engine = self.engine()
+        with patch.object(ctl, 'Docker', return_value=engine), patch.object(ctl, 'wait_healthy'):
+            ctl.recover(self.c, 5)
+        recovered = json.loads((root / 'deployment.json').read_text())
+        self.assertEqual(recovered['current'], old)
+        self.assertEqual(recovered['trust'], old_trust)
+        self.assertIsNone(recovered['pending'])
+        self.assertEqual(engine.calls, ['v0.1.0'])
 
     def test_failed_upgrade_automatically_recovers_old_version(self):
         baseline, _ = self.release()

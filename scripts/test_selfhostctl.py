@@ -24,23 +24,24 @@ class SelfHosted(unittest.TestCase):
         self.key.chmod(0o600)
         ctl.command(['openssl', 'pkey', '-in', self.key, '-pubout', '-out', self.pub])
 
-    def signed(self, version='v0.1.0', profile=None):
+    def signed(self, version='v0.1.0', profile=None, repository=None, signing_key=None):
         folder = self.root / version
         folder.mkdir(mode=0o700)
         profile = profile or json.loads((ROOT / 'deploy/selfhost.json').read_text())
         ctl.write(folder / 'selfhost.json', json.dumps(profile))
         for name in ('agentctl.py', 'selfhostctl.py'):
             ctl.write(folder / name, b'authenticated fixture artifact')
-        manifest = {'schema': 1, 'repository': ctl.trust.REPOSITORY, 'version': version,
+        repository = repository or ctl.trust.REPOSITORY
+        manifest = {'schema': 1, 'repository': repository, 'version': version,
                     'revision': 'a' * 40, 'protocol': 1, 'state_schema': 1,
                     'image': 'sha256:' + 'b' * 64,
                     'artifacts': {p.name: ctl.sha(p) for p in folder.iterdir()}}
         ctl.write(folder / 'release.json', json.dumps(manifest))
-        ctl.command(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+        ctl.command(['openssl', 'pkeyutl', '-sign', '-inkey', signing_key or self.key, '-rawin',
                      '-in', folder / 'release.json', '-out', folder / 'release.sig'])
         return folder, manifest, profile
 
-    def installation(self, manifest, profile):
+    def installation(self, manifest, profile, public_key=None):
         root = self.root / 'installation'
         root.mkdir(mode=0o700)
         state = root / 'state'
@@ -59,7 +60,7 @@ class SelfHosted(unittest.TestCase):
         ctl.trust.private_json(root / 'installation.json', c)
         h = {'schema': 1, 'current': manifest, 'previous': None, 'profile': profile,
              'pending': None, 'identity': ctl.state_identity(root),
-             'trust': ctl.hashlib.sha256(self.pub.read_bytes()).hexdigest()}
+             'trust': ctl.hashlib.sha256((public_key or self.pub).read_bytes()).hexdigest()}
         ctl.trust.private_json(root / 'deployment.json', h)
         return root, c, h
 
@@ -318,6 +319,118 @@ class SelfHosted(unittest.TestCase):
                 self.assertEqual(after['identity'], initial['identity'])
                 self.assertIsNone(after['pending'])
         self.assertEqual(Engine.migrations, [20, 19])
+
+    def test_explicit_migration_and_previous_publisher_rollback_preserve_manager_state(self):
+        source_key, source_pub = self.root / 'predecessor.key', self.root / 'predecessor.pub'
+        ctl.command(['openssl', 'genpkey', '-algorithm', 'ED25519', '-out', source_key])
+        ctl.command(['openssl', 'pkey', '-in', source_key, '-pubout', '-out', source_pub])
+        source, old, profile = self.signed(repository=ctl.trust.PREDECESSOR_REPOSITORY,
+                                           signing_key=source_key)
+        candidate, new, _ = self.signed('v0.1.1')
+        root, _, h = self.installation(old, profile, source_pub)
+        before = {p.name: p.read_bytes() for p in (root / 'state/pki').iterdir()}
+        old_trust = ctl.hashlib.sha256(source_pub.read_bytes()).hexdigest()
+        new_trust = ctl.hashlib.sha256(self.pub.read_bytes()).hexdigest()
+
+        class Engine:
+            calls = []
+            prepared = []
+            def __init__(self, root, c): pass
+            def prepare(self, selected, profile): self.prepared.append(selected['repository'])
+            def stop(self, *args): pass
+            def render(self, selected, profile): self.calls.append(selected['version'])
+            def migrate(self, *args): pass
+            def switch(self): pass
+            def healthy(self, *args): pass
+
+        with patch.object(ctl, 'Engine', Engine):
+            args = SimpleNamespace(directory=root, release=candidate, version='v0.1.1',
+                                   public_key=self.pub, action='upgrade', timeout=5)
+            with self.assertRaisesRegex(ctl.Error, 'explicit migration'):
+                ctl.change(args)
+            args.action = 'migrate'
+            args.source_release = source
+            args.source_public_key = source_pub
+            ctl.change(args)
+            migrated = ctl.load(root / 'deployment.json')
+            self.assertEqual((migrated['current'], migrated['previous']), (new, old))
+            self.assertEqual((migrated['trust'], migrated['previous_trust']), (new_trust, old_trust))
+            args = SimpleNamespace(directory=root, release=source, version='v0.1.0',
+                                   public_key=source_pub, action='rollback', timeout=5)
+            ctl.change(args)
+        rolled_back = ctl.load(root / 'deployment.json')
+        self.assertEqual((rolled_back['current'], rolled_back['previous']), (old, new))
+        self.assertEqual((rolled_back['trust'], rolled_back['previous_trust']), (old_trust, new_trust))
+        self.assertEqual(rolled_back['identity'], h['identity'])
+        self.assertEqual(before, {p.name: p.read_bytes() for p in (root / 'state/pki').iterdir()})
+        self.assertEqual(Engine.calls, ['v0.1.1', 'v0.1.0'])
+        self.assertEqual(Engine.prepared, [ctl.trust.PREDECESSOR_REPOSITORY, ctl.trust.REPOSITORY,
+                                           ctl.trust.PREDECESSOR_REPOSITORY])
+        self.assertTrue((root / 'releases/v0.1.0/release.sig').is_file())
+
+    def test_failed_migration_recovers_predecessor_and_rejects_wrong_source(self):
+        source, old, profile = self.signed(repository=ctl.trust.PREDECESSOR_REPOSITORY)
+        candidate, new, _ = self.signed('v0.1.1')
+        root, _, h = self.installation(old, profile)
+        args = SimpleNamespace(directory=root, release=candidate, version='v0.1.1',
+                               public_key=self.pub, action='migrate', timeout=5,
+                               source_release=source, source_public_key=self.pub)
+        with self.assertRaisesRegex(ctl.Error, 'explicit migration'):
+            ctl.change(SimpleNamespace(**{**vars(args), 'action': 'upgrade'}))
+
+        class Engine:
+            calls = []
+            def __init__(self, root, c): pass
+            def prepare(self, *args): pass
+            def stop(self, *args): pass
+            def render(self, selected, profile): self.calls.append(selected['version'])
+            def migrate(self, *args): pass
+            def switch(self): pass
+            def healthy(self, selected, *args):
+                if selected['version'] == new['version']:
+                    raise ctl.Error('candidate failed readiness')
+
+        wrong_key = self.root / 'wrong.pub'
+        ctl.command(['openssl', 'genpkey', '-algorithm', 'ED25519', '-out', self.root / 'wrong.key'])
+        ctl.command(['openssl', 'pkey', '-in', self.root / 'wrong.key', '-pubout', '-out', wrong_key])
+        args.source_public_key = wrong_key
+        with patch.object(ctl, 'Engine', Engine), self.assertRaises(ctl.Error):
+            ctl.change(args)
+        self.assertEqual(Engine.calls, [])
+        args.source_public_key = self.pub
+        with patch.object(ctl, 'Engine', Engine), self.assertRaisesRegex(ctl.Error, 'previous release is running'):
+            ctl.change(args)
+        after = ctl.load(root / 'deployment.json')
+        self.assertEqual(after['current'], old)
+        self.assertEqual(after['trust'], h['trust'])
+        self.assertEqual(after['identity'], h['identity'])
+        self.assertIsNone(after['pending'])
+        self.assertEqual(after['last_result'], 'automatic_rollback')
+        self.assertEqual(Engine.calls, ['v0.1.1', 'v0.1.0'])
+
+    def test_interrupted_migration_recovers_predecessor_and_keeps_publisher(self):
+        _, old, profile = self.signed(repository=ctl.trust.PREDECESSOR_REPOSITORY)
+        _, candidate, _ = self.signed('v0.1.1')
+        root, _, original = self.installation(old, profile)
+        history = ctl.load(root / 'deployment.json')
+        history['pending'] = {'action': 'migrate', 'release': candidate, 'profile': profile,
+                              'trust': 'new-publisher'}
+        ctl.trust.private_json(root / 'deployment.json', history)
+
+        class Engine:
+            calls = []
+            def __init__(self, root, c): pass
+            def render(self, selected, profile): self.calls.append(selected['version'])
+            def switch(self): pass
+            def healthy(self, *args): pass
+
+        with patch.object(ctl, 'Engine', Engine):
+            ctl.recover(SimpleNamespace(directory=root, timeout=5))
+        recovered = ctl.load(root / 'deployment.json')
+        self.assertEqual(recovered['current'], old)
+        self.assertEqual(recovered['trust'], original['trust'])
+        self.assertIsNone(recovered['pending'])
+        self.assertEqual(Engine.calls, ['v0.1.0'])
 
     def test_acceptance_refuses_small_or_shared_engines_before_creating_a_lab(self):
         for info in ({'MemTotal': 2 << 30, 'ContainersRunning': 0},
