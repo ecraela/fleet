@@ -43,7 +43,7 @@ known app/fingerprint ownership, then stamps organization/cluster/node itself.
 
 Separate reader, sender, connection and admission pools keep logs out of metric
 and control workloads. Limits are 2 KiB datagrams, 2,048 queued records, 512
-records/256 KiB batches, a 100 ms flush under load, five-second heartbeats and a
+records/256 KiB batches, a 125 ms flush under load, five-second heartbeats and a
 two-second delivery deadline. No disk spool or ambiguous-write retry exists.
 Counters expose received/ignored/rejected/dropped/unconfirmed records for the
 current process across its apps; process UUIDs distinguish resets. Pre-socket
@@ -56,11 +56,12 @@ identities maximum. Queries have bounded responses and deadlines. These are
 resource bounds, not a measured capacity claim; log outages must not stop serving,
 metrics or control.
 
-The 100 ms sender interval and 512-record batch replace the original 250 ms
+The 125 ms sender interval and 512-record batch replace the original 250 ms
 interval and 256-record batch after the two-node pilot exposed collector loss
 under roughly 3.7k–4.7k request/s workloads. With full batches the nominal
-ceiling is 5,120 records/s per node, subject to the 256 KiB payload limit and
-the existing 100-batch/10-second ingest budget. This is an upper bound, not
+ceiling is 4,096 records/s per node, subject to the 256 KiB payload limit and
+the existing 100-batch/10-second ingest budget. The slower cadence leaves
+headroom under that fixed admission window. This is an upper bound, not
 guaranteed throughput:
 uneven node traffic, request size, upload latency and log-store performance can
 still cause loss. A controlled same-route load test must report both HAProxy

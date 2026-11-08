@@ -34,10 +34,10 @@ func sendAccessLoop(ctx context.Context, cfg Config, trust *x509.CertPool, recei
 	u, _ := url.Parse(cfg.IngestURL)
 	u.Path = "/v1/logs/write"
 	// The original 256-record batch every 250 ms capped collection at 1,024
-	// requests/s per node, below ordinary pilot traffic. The larger bounded
-	// batch and shorter interval raise that ceiling without adding parallel
-	// uploads or an unbounded spool.
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// requests/s per node, below ordinary pilot traffic. Keep the faster
+	// bounded drain below the ingest budget of 100 uploads per ten seconds;
+	// a 100 ms tick can exceed that fixed window at its boundary.
+	ticker := time.NewTicker(125 * time.Millisecond)
 	defer ticker.Stop()
 	var client *http.Client
 	var certificate string
