@@ -36,9 +36,8 @@ jobs:
           go-version: 1.26.10
       - name: Install pinned backup tools
         run: go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v3.1.4
+      - name: Install checksum-pinned Cosign
+        run: bash scripts/install_cosign.sh
       - name: Confirm public distribution and download exact release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
