@@ -91,6 +91,33 @@ class EntrypointObservationsTest(unittest.TestCase):
 
 
 class MaintenanceRequestTest(unittest.TestCase):
+    def test_withdraw_waits_for_target_discovery_after_agent_restart(self):
+        reads, writes = 0, []
+        def request(path, body=None):
+            nonlocal reads
+            if body is not None:
+                writes.append(body)
+                return {}
+            if writes:
+                return {'maintenance': {'status': 'maintenance'}}
+            reads += 1
+            cfg = {'document': {'backends': []}, 'observed_at_ms': 100000,
+                   'artifact_id': 'owned', 'version': 1}
+            d = {'configuration': cfg, 'generation': 'ready'}
+            return {'target': {'discovery': None if reads == 1 else d},
+                    'controller': {'discovery': d}, 'binding_id': 'bound',
+                    'reason_code': '', 'maintenance': None}
+        def poll(label, operation, seconds=30):
+            for _ in range(3):
+                if value := operation():
+                    return value
+            self.fail('target discovery did not settle: ' + label)
+        lab = SimpleNamespace(api=SimpleNamespace(request=request))
+        with patch('requests.wait_for', side_effect=poll), patch('requests.time.time', return_value=100):
+            maintenance(lab, {'id': 'node', 'name': 'local node'}, 'withdraw')
+        self.assertEqual(reads, 2)
+        self.assertEqual(len(writes), 1)
+
     def exercise(self, rejection):
         bodies, reads, accepted = [], 0, False
         def request(path, body=None):

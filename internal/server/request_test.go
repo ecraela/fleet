@@ -119,6 +119,16 @@ func TestRequestAPIsEnforceTenantReadAndTypedFilters(t *testing.T) {
 		if strings.Contains(q, "stats by") {
 			stats["_time"] = time.Now().Add(-5 * time.Second).UTC().Truncate(5 * time.Second).Format(time.RFC3339Nano)
 		}
+		if strings.Contains(q, "stats by (_time:") {
+			if strings.Count(q, "quantile(") != 1 {
+				return &http.Response{StatusCode: 400, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("grouped quantiles exceed memory budget"))}, nil
+			}
+			for _, field := range []string{"p50_ms", "p95_ms", "p99_ms"} {
+				if !strings.Contains(q, " as "+field) {
+					delete(stats, field)
+				}
+			}
+		}
 		b, _ := json.Marshal(stats)
 		return logResponse(string(b) + "\n"), nil
 	})}
@@ -167,6 +177,26 @@ func TestRequestAPIsEnforceTenantReadAndTypedFilters(t *testing.T) {
 	wrong.Store(true)
 	if got := f.request("GET", base+"/requests", nil, true); got.Code != 503 || strings.Contains(got.Body.String(), "spec_digest") {
 		t.Fatal("foreign storage result escaped", got.Code)
+	}
+}
+
+func TestMergePointQuantileRequiresMatchingTimeBuckets(t *testing.T) {
+	points := []map[string]string{{"_time": "first"}, {"_time": "second"}}
+	if !mergePointQuantile(points, []map[string]string{{"_time": "second", "p50_ms": "20"}, {"_time": "first", "p50_ms": "10"}}, "p50_ms") {
+		t.Fatal("matching time buckets were rejected")
+	}
+	if points[0]["p50_ms"] != "10" || points[1]["p50_ms"] != "20" {
+		t.Fatal("quantiles were merged into the wrong time buckets")
+	}
+	for _, rows := range [][]map[string]string{
+		{{"_time": "first", "p99_ms": "10"}},
+		{{"_time": "first", "p99_ms": "10"}, {"_time": "first", "p99_ms": "11"}},
+		{{"_time": "first", "p99_ms": "10"}, {"_time": "other", "p99_ms": "20"}},
+		{{"_time": "first", "p99_ms": "10"}, {"_time": "second"}},
+	} {
+		if mergePointQuantile(points, rows, "p99_ms") {
+			t.Fatal("mismatched quantile buckets were accepted", rows)
+		}
 	}
 }
 
