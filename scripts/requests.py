@@ -30,6 +30,8 @@ def maintenance(lab, node, action):
         d = v['controller'].get('discovery') or {}
         cfg = d.get('configuration') or {}
         target = v['target'].get('discovery') or {}
+        if not target.get('generation') or not d.get('generation') or not cfg.get('artifact_id') or cfg.get('version') is None:
+            return None
         healthy = action != 'rejoin' or ((target.get('configuration') or {}).get('document') and not (target.get('configuration') or {}).get('error_code') and not target.get('error_code') and time.time()*1000-target.get('observed_at_ms',0)<5000 and all(s['health']=='UP' and s.get('check_status','').removeprefix('* ') in ('L4OK','L6OK','L7OK','L7OKC') for s in target.get('servers',[])))
         return v if not v['reason_code'] and cfg.get('document') and time.time()*1000-cfg.get('observed_at_ms', 0) < 5000 and healthy else None
     def submit():
