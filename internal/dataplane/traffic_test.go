@@ -121,6 +121,43 @@ func TestTrafficAssetsAreLocalImmutableAndShareTheClientPolicy(t *testing.T) {
 	if _, apps, err := c.projectApplications([]object{oldBackend}); err != nil || len(apps) != 1 {
 		t.Fatal("historical full-map backend cannot be observed after upgrade", err)
 	}
+	c.StateDir = filepath.Join(dir, "state")
+	id := strings.Repeat("b", 64)
+	doc := domain.ConfigurationDocument{Backends: []domain.ConfigurationBackend{{
+		Name: "baseline", Algorithm: "roundrobin", Servers: []domain.ConfigurationServer{{
+			Name: "origin", Address: "backend.internal", Port: 8080, Weight: 100,
+		}},
+	}}, Applications: []domain.HTTPApplication{a}}
+	if !doc.Valid() {
+		t.Fatal("invalid historical binding fixture")
+	}
+	bindings := filepath.Join(c.StateDir, "configuration-bindings")
+	if err := os.MkdirAll(bindings, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(bindings, id+".json")
+	historical := artifactBinding{Version: 1, ArtifactID: id, Document: doc.Canonical(),
+		CertificatePaths: map[string]string{}, LogProfiles: map[string]string{},
+		TrafficRules: map[string]string{a.ID: dependencyProfile(legacy)}}
+	storeBinding := func(b artifactBinding) {
+		raw, _ := json.Marshal(b)
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	storeBinding(historical)
+	if err := c.retainBinding(id, doc, nil); err != nil {
+		t.Fatal("historical full-map binding rejected after upgrade", err)
+	}
+	loaded, err := c.loadBinding(id)
+	if err != nil || loaded.TrafficRules[a.ID] != dependencyProfile(legacy) {
+		t.Fatal("historical binding was replaced", err)
+	}
+	historical.TrafficRules[a.ID] = strings.Repeat("f", 64)
+	storeBinding(historical)
+	if err := c.retainBinding(id, doc, nil); err == nil {
+		t.Fatal("unrecognized historical traffic profile accepted")
+	}
 	selected, err := os.ReadFile(countryMap)
 	if err != nil || !strings.Contains(string(selected), " GB\n") || !strings.Contains(string(selected), " __other__\n") {
 		t.Fatal("selected and other known countries missing", err)
