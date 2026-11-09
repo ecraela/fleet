@@ -22,7 +22,9 @@ import (
 
 type requestWindow struct{ duration, step time.Duration }
 
-var requestWindows = map[string]requestWindow{"15m": {15 * time.Minute, 5 * time.Second}, "1h": {time.Hour, 20 * time.Second}, "6h": {6 * time.Hour, 2 * time.Minute}, "24h": {24 * time.Hour, 8 * time.Minute}}
+// Keep each history near 60 buckets. Grouped latency quantiles otherwise
+// exhaust the small self-hosted log store's per-query memory budget under load.
+var requestWindows = map[string]requestWindow{"15m": {15 * time.Minute, 15 * time.Second}, "1h": {time.Hour, time.Minute}, "6h": {6 * time.Hour, 6 * time.Minute}, "24h": {24 * time.Hour, 24 * time.Minute}}
 
 type requestCursor struct {
 	AtMS int64  `json:"at_ms"`
@@ -208,7 +210,7 @@ const requestStats = requestBaseStats + `, quantile(0.5,duration_ms) as p50_ms, 
 const requestPointStats = requestBaseStats + `, quantile(0.95,duration_ms) as p95_ms`
 
 // VictoriaLogs gives each grouped quantile its own working set. Three
-// percentiles in one five-second series exceed the small self-hosted query
+// percentiles in one grouped series exceed the small self-hosted query
 // budget during sustained traffic, even when each percentile fits alone.
 func mergePointQuantile(points, quantiles []map[string]string, field string) bool {
 	byTime := make(map[string]map[string]string, len(points))
