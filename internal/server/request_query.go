@@ -203,7 +203,34 @@ type RequestPathSummary struct {
 	RequestStats
 }
 
-const requestStats = `count() as requests, count() if (status_class:=1xx) as s1, count() if (status_class:=2xx) as s2, count() if (status_class:=3xx) as s3, count() if (status_class:=4xx) as s4, count() if (status_class:=5xx) as s5, count() if (status_class:=other) as other, sum(bytes) as bytes, avg(duration_ms) as mean_ms, quantile(0.5,duration_ms) as p50_ms, quantile(0.95,duration_ms) as p95_ms, quantile(0.99,duration_ms) as p99_ms`
+const requestBaseStats = `count() as requests, count() if (status_class:=1xx) as s1, count() if (status_class:=2xx) as s2, count() if (status_class:=3xx) as s3, count() if (status_class:=4xx) as s4, count() if (status_class:=5xx) as s5, count() if (status_class:=other) as other, sum(bytes) as bytes, avg(duration_ms) as mean_ms`
+const requestStats = requestBaseStats + `, quantile(0.5,duration_ms) as p50_ms, quantile(0.95,duration_ms) as p95_ms, quantile(0.99,duration_ms) as p99_ms`
+const requestPointStats = requestBaseStats + `, quantile(0.95,duration_ms) as p95_ms`
+
+// VictoriaLogs gives each grouped quantile its own working set. Three
+// percentiles in one five-second series exceed the small self-hosted query
+// budget during sustained traffic, even when each percentile fits alone.
+func mergePointQuantile(points, quantiles []map[string]string, field string) bool {
+	byTime := make(map[string]map[string]string, len(points))
+	for _, point := range points {
+		at := point["_time"]
+		if at == "" || byTime[at] != nil {
+			return false
+		}
+		byTime[at] = point
+	}
+	seen := make(map[string]bool, len(quantiles))
+	for _, row := range quantiles {
+		at := row["_time"]
+		point := byTime[at]
+		if point == nil || seen[at] || row[field] == "" {
+			return false
+		}
+		point[field] = row[field]
+		seen[at] = true
+	}
+	return len(seen) == len(points)
+}
 
 func readNumber(row map[string]string, k string, max float64) (float64, bool) {
 	v, err := strconv.ParseFloat(row[k], 64)
@@ -333,7 +360,7 @@ func (s *Server) applicationTraffic(w http.ResponseWriter, r *http.Request, org 
 	}
 	queries := []query{
 		{text: base + " | stats " + requestStats, start: f.start, end: f.end, limit: 1},
-		{text: fmt.Sprintf("%s | stats by (_time:%ds) %s | sort by (_time)", base, f.step, requestStats), start: f.start, end: f.end, limit: 362},
+		{text: fmt.Sprintf("%s | stats by (_time:%ds) %s | sort by (_time)", base, f.step, requestPointStats), start: f.start, end: f.end, limit: 362},
 		{text: fmt.Sprintf(`organization_id:=%q cluster_id:=%q kind:=pipeline | sort by (_time desc) partition by (node_id) limit 1`, org, r.PathValue("cluster")), start: time.Now().Add(-90 * time.Second).UnixMilli(), end: time.Now().Add(time.Second).UnixMilli(), limit: 12},
 	}
 	var wg sync.WaitGroup
@@ -348,6 +375,16 @@ func (s *Server) applicationTraffic(w http.ResponseWriter, r *http.Request, org 
 	wg.Wait()
 	for _, q := range queries {
 		if q.err != nil {
+			fail(w, 503, "request telemetry query unavailable")
+			return
+		}
+	}
+	for _, quantile := range []struct {
+		phi, field string
+	}{{"0.5", "p50_ms"}, {"0.99", "p99_ms"}} {
+		text := fmt.Sprintf("%s | stats by (_time:%ds) quantile(%s,duration_ms) as %s | sort by (_time)", base, f.step, quantile.phi, quantile.field)
+		rows, err := s.logs.Query(ctx, text, f.start, f.end, 362)
+		if err != nil || !mergePointQuantile(queries[1].rows, rows, quantile.field) {
 			fail(w, 503, "request telemetry query unavailable")
 			return
 		}
