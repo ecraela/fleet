@@ -54,7 +54,7 @@ def build(output, version, revision, image, compatibility_file):
         shutil.copyfile(ROOT / 'internal/webui/dist/legal' / name, output / name)
     manifest = {'schema': 1, 'repository': 'ecraela/fleet', 'version': version,
                 'revision': revision, 'protocol': 1, 'state_schema': 1, 'image': image,
-                'compatibility': compatibility,
+                'compatibility': compatibility, 'managed_upgrades': True,
                 'artifacts': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(output.iterdir())}}
     (output / 'release.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
 

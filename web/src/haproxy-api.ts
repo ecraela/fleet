@@ -768,6 +768,103 @@ export interface HAProxyFleet {
   partial: boolean;
 }
 
+export interface HAProxySoftwareRelease {
+  version: string;
+  revision: string;
+  manifest_sha256: string;
+  publisher: string;
+  platforms: string[];
+  compatibility: {
+    manager: { min: string; max: string };
+    agent: { min: string; max: string };
+  };
+}
+
+export interface HAProxySoftwareUpdater {
+  current_version: string;
+  ingest_version?: string;
+  previous_version?: string;
+  ready: boolean;
+  last_seen: string;
+}
+
+export interface HAProxySoftwareUpdate {
+  id: string;
+  organization_id: string;
+  cluster_id: string;
+  node_id: string;
+  request_id: string;
+  action: "upgrade" | "rollback";
+  target_version: string;
+  expected_version: string;
+  status:
+    | "queued"
+    | "preparing"
+    | "activating"
+    | "verifying"
+    | "needs_attention"
+    | "succeeded"
+    | "rolled_back"
+    | "cancelled"
+    | "recovered";
+  error_code?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HAProxySoftwareView {
+  updates: HAProxySoftwareUpdate[];
+  updater: HAProxySoftwareUpdater | null;
+  observed: {
+    build: HAProxyAgentBuild | null;
+    connected: boolean;
+    last_seen: string;
+  } | null;
+}
+
+export interface HAProxySoftwarePlan {
+  release: HAProxySoftwareRelease;
+  current: HAProxyAgentBuild;
+  manager: HAProxyAgentBuild;
+  action: "upgrade" | "rollback";
+  eligible: boolean;
+  reason?: string;
+  traffic_impact: string;
+  management_impact: string;
+  updater?: HAProxySoftwareUpdater;
+}
+
+export interface HAProxyInstallationSoftwareUpdate {
+  id: string;
+  organization_id: string;
+  request_id: string;
+  action: "upgrade" | "rollback";
+  target_version: string;
+  expected_version: string;
+  status: HAProxySoftwareUpdate["status"];
+  error_code?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HAProxyInstallationSoftwareView {
+  updates: HAProxyInstallationSoftwareUpdate[];
+  updater: HAProxySoftwareUpdater | null;
+  observed: HAProxyAgentBuild;
+}
+
+export interface HAProxyInstallationSoftwarePlan {
+  release: HAProxySoftwareRelease;
+  current: HAProxyAgentBuild;
+  action: "upgrade" | "rollback";
+  eligible: boolean;
+  reason?: string;
+  traffic_impact: string;
+  management_impact: string;
+  agent_count: number;
+  updater?: HAProxySoftwareUpdater;
+}
+
 export interface MetricSeries {
   metric: Record<string, string>;
   value: [number, string];
@@ -1036,6 +1133,187 @@ export class HAProxyClient {
     return this.send(
       `/fleet${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
     );
+  }
+
+  async softwareReleases(): Promise<HAProxySoftwareRelease[]> {
+    const result = await this.send<{ releases: HAProxySoftwareRelease[] }>(
+      "/software/releases",
+    );
+    if (
+      !Array.isArray(result.releases) ||
+      result.releases.length > 50 ||
+      result.releases.some(
+        (r) =>
+          !r ||
+          typeof r.version !== "string" ||
+          typeof r.publisher !== "string" ||
+          !Array.isArray(r.platforms) ||
+          !r.compatibility?.manager ||
+          !r.compatibility?.agent,
+      )
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned an invalid signed release catalog.",
+      );
+    return result.releases;
+  }
+
+  async installationSoftware(): Promise<HAProxyInstallationSoftwareView> {
+    const result =
+      await this.send<HAProxyInstallationSoftwareView>("/software/manager");
+    if (
+      !Array.isArray(result.updates) ||
+      result.updates.length > 20 ||
+      result.updates.some((u) => u.organization_id !== this.organizationId) ||
+      typeof result.observed?.version !== "string"
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned invalid manager software state.",
+      );
+    return result;
+  }
+
+  async installationSoftwarePlan(
+    version: string,
+    action: "upgrade" | "rollback",
+  ): Promise<HAProxyInstallationSoftwarePlan> {
+    const result = await this.send<{ plan: HAProxyInstallationSoftwarePlan }>(
+      `/software/manager/plan?version=${encodeURIComponent(version)}&action=${action}`,
+    );
+    if (
+      result.plan?.release?.version !== version ||
+      result.plan.action !== action ||
+      typeof result.plan.eligible !== "boolean" ||
+      typeof result.plan.agent_count !== "number"
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned an invalid manager software plan.",
+      );
+    return result.plan;
+  }
+
+  async requestInstallationSoftware(input: {
+    request_id: string;
+    action: "upgrade" | "rollback";
+    version: string;
+    expected_version: string;
+  }): Promise<HAProxyInstallationSoftwareUpdate> {
+    const result = await this.send<{
+      update: HAProxyInstallationSoftwareUpdate;
+    }>("/software/manager", { method: "POST", body: JSON.stringify(input) });
+    if (
+      result.update?.organization_id !== this.organizationId ||
+      result.update.request_id !== input.request_id ||
+      result.update.target_version !== input.version
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned an invalid manager update receipt.",
+      );
+    return result.update;
+  }
+
+  async cancelInstallationSoftware(
+    updateId: string,
+  ): Promise<HAProxyInstallationSoftwareUpdate> {
+    const result = await this.send<{
+      update: HAProxyInstallationSoftwareUpdate;
+    }>(`/software/manager/${encodeURIComponent(updateId)}/cancel`, {
+      method: "POST",
+      body: "{}",
+    });
+    if (result.update?.id !== updateId || result.update.status !== "cancelled")
+      throw new HAProxyError(
+        502,
+        "HAProxy returned an invalid manager cancellation receipt.",
+      );
+    return result.update;
+  }
+
+  async nodeSoftware(nodeId: string): Promise<HAProxySoftwareView> {
+    const result = await this.send<HAProxySoftwareView>(
+      `/nodes/${encodeURIComponent(nodeId)}/software`,
+    );
+    if (
+      !Array.isArray(result.updates) ||
+      result.updates.length > 20 ||
+      result.updates.some(
+        (u) =>
+          u.node_id !== nodeId || u.organization_id !== this.organizationId,
+      )
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned invalid software update history.",
+      );
+    return result;
+  }
+
+  async softwarePlan(
+    nodeId: string,
+    version: string,
+    action: "upgrade" | "rollback",
+  ): Promise<HAProxySoftwarePlan> {
+    const result = await this.send<{ plan: HAProxySoftwarePlan }>(
+      `/nodes/${encodeURIComponent(nodeId)}/software/plan?version=${encodeURIComponent(version)}&action=${action}`,
+    );
+    if (
+      result.plan?.release?.version !== version ||
+      result.plan.action !== action ||
+      typeof result.plan.eligible !== "boolean" ||
+      typeof result.plan.traffic_impact !== "string"
+    )
+      throw new HAProxyError(502, "HAProxy returned an invalid software plan.");
+    return result.plan;
+  }
+
+  async requestSoftware(
+    nodeId: string,
+    input: {
+      request_id: string;
+      action: "upgrade" | "rollback";
+      version: string;
+      expected_version: string;
+    },
+  ): Promise<HAProxySoftwareUpdate> {
+    const result = await this.send<{ update: HAProxySoftwareUpdate }>(
+      `/nodes/${encodeURIComponent(nodeId)}/software`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+    if (
+      result.update?.node_id !== nodeId ||
+      result.update.organization_id !== this.organizationId ||
+      result.update.request_id !== input.request_id ||
+      result.update.target_version !== input.version
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned an invalid software update receipt.",
+      );
+    return result.update;
+  }
+
+  async cancelSoftware(
+    nodeId: string,
+    updateId: string,
+  ): Promise<HAProxySoftwareUpdate> {
+    const result = await this.send<{ update: HAProxySoftwareUpdate }>(
+      `/nodes/${encodeURIComponent(nodeId)}/software/${encodeURIComponent(updateId)}/cancel`,
+      { method: "POST", body: "{}" },
+    );
+    if (
+      result.update?.id !== updateId ||
+      result.update.node_id !== nodeId ||
+      result.update.status !== "cancelled"
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned an invalid cancellation receipt.",
+      );
+    return result.update;
   }
 
   cachedObservations(nodeId: string): HAProxyObservations {

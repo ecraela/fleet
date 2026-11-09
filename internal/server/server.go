@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/ecraela/fleet/internal/accesslog"
+	"github.com/ecraela/fleet/internal/buildinfo"
 	"github.com/ecraela/fleet/internal/domain"
 	"github.com/ecraela/fleet/internal/pki"
 	"github.com/ecraela/fleet/internal/store"
@@ -32,22 +33,26 @@ import (
 )
 
 type Config struct {
-	Connector     ConnectorConfig
-	LogsURL       string
-	LogsClient    *http.Client
-	Notifications []NotificationTarget
-	Role          string
-	Store         store.Store
-	Authority     *pki.Authority
-	Operators     []OperatorCredential
-	MetricsURL    string
-	Client        *http.Client
-	Local         LocalConfig
-	Browser       BrowserConfig
-	AgentSetup    AgentSetup
+	Connector                  ConnectorConfig
+	LogsURL                    string
+	LogsClient                 *http.Client
+	Notifications              []NotificationTarget
+	Role                       string
+	Store                      store.Store
+	Authority                  *pki.Authority
+	Operators                  []OperatorCredential
+	MetricsURL                 string
+	Client                     *http.Client
+	Local                      LocalConfig
+	Browser                    BrowserConfig
+	AgentSetup                 AgentSetup
+	ReleaseCatalogFile         string
+	InstallationOrganizationID string
+	SoftwareHostTokenSHA256    string
 }
 
 type Server struct {
+	buildInfo          func() buildinfo.Info
 	connector          *connectorClient
 	relay              *relayService
 	logs               *accesslog.Storage
@@ -85,6 +90,10 @@ func New(config Config) (*Server, error) {
 	if config.Store == nil || config.Authority == nil || (config.Role == "manager" && len(config.Operators) == 0) {
 		return nil, errors.New("store, authority, and manager operator credentials are required")
 	}
+	if (config.InstallationOrganizationID == "") != (config.SoftwareHostTokenSHA256 == "") ||
+		config.InstallationOrganizationID != "" && (!domain.ValidID(config.InstallationOrganizationID) || !domain.ValidDigest(config.SoftwareHostTokenSHA256)) {
+		return nil, errors.New("installation software host credential must bind a valid organization and SHA-256 token")
+	}
 	metrics, err := url.Parse(config.MetricsURL)
 	if err != nil || (metrics.Scheme != "http" && metrics.Scheme != "https") || metrics.Host == "" || metrics.User != nil || metrics.RawQuery != "" || metrics.Fragment != "" {
 		return nil, errors.New("metrics URL must be an HTTP(S) service base URL")
@@ -96,7 +105,7 @@ func New(config Config) (*Server, error) {
 	// A redirect must not move authenticated node telemetry to another service.
 	copyClient := *client
 	copyClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	s := &Server{config: config, metrics: metrics, client: &copyClient, mux: http.NewServeMux(),
+	s := &Server{config: config, buildInfo: buildinfo.Current, metrics: metrics, client: &copyClient, mux: http.NewServeMux(),
 		ingestion: make(chan struct{}, 8), queries: make(chan struct{}, 8), streams: make(chan struct{}, 32),
 		active: make(map[string]bool), enrollers: make(map[string]int), window: time.Now(), budget: newSeriesBudget()}
 	s.notificationClient = newNotificationClient()
@@ -121,6 +130,7 @@ func New(config Config) (*Server, error) {
 		s.configureACME()
 		s.configureIncidents()
 		s.configureMaintenance()
+		s.configureSoftware()
 		if err := s.validateAgentSetup(); err != nil {
 			return nil, err
 		}

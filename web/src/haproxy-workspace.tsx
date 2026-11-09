@@ -49,6 +49,7 @@ import { HAProxyIncidents } from "./haproxy-incidents";
 import { HAProxyRollouts } from "./haproxy-rollouts";
 import { HAProxyListeners } from "./haproxy-listeners";
 import { HAProxyAutomaticTLS } from "./haproxy-acme";
+import { HAProxyManagerSoftware, HAProxySoftware } from "./haproxy-software";
 
 export function HAProxyWorkspace({
   basePath,
@@ -732,63 +733,73 @@ export function HAProxyWorkspace({
                 </AriaLink>
               )}
               {(!installationSettings || settingsTab === "software") && (
-                <Section
-                  layout="stack"
-                  title="Software inventory"
-                  description="Versions reported by running processes. Host installers verify signed releases; the agent never replaces itself."
-                >
-                  <p>
-                    Manager version:{" "}
-                    {fleet.manager_build?.version ?? "Not reported"}
-                  </p>
-                  <PaginatedDataTable
-                    aria-label="Agent software versions"
-                    itemLabel="nodes"
-                    rows={installationSettings ? fleet.nodes : scopedNodes}
-                    rowLabel={(n) => n.name}
-                    columns={[
-                      {
-                        id: "node",
-                        header: "Node",
-                        isRowHeader: true,
-                        cell: (n) => (
-                          <AriaLink
-                            href={href([
-                              "infrastructure",
-                              "nodes",
-                              n.id,
-                              "runtime",
-                            ])}
-                          >
-                            {n.name}
-                          </AriaLink>
-                        ),
-                      },
-                      {
-                        id: "version",
-                        header: "Agent version",
-                        cell: (n) => n.agent?.version ?? "Not reported",
-                      },
-                      {
-                        id: "haproxy",
-                        header: "HAProxy version",
-                        cell: (n) => n.haproxy_version || "Not reported",
-                      },
-                      {
-                        id: "fresh",
-                        header: "Observation",
-                        cell: (n) =>
-                          n.agent_fresh ? "Current" : "Last reported",
-                      },
-                    ]}
-                    emptyState={
-                      <EmptyState
-                        title="No agent versions yet"
-                        description="Enroll a node to see its reported software version."
-                      />
-                    }
+                <>
+                  <Section
+                    layout="stack"
+                    title="Software inventory"
+                    description="Versions reported by running processes. Host installers verify signed releases; the agent never replaces itself."
+                  >
+                    <p>
+                      Manager version:{" "}
+                      {fleet.manager_build?.version ?? "Not reported"}
+                    </p>
+                    <PaginatedDataTable
+                      aria-label="Agent software versions"
+                      itemLabel="nodes"
+                      rows={installationSettings ? fleet.nodes : scopedNodes}
+                      rowLabel={(n) => n.name}
+                      columns={[
+                        {
+                          id: "node",
+                          header: "Node",
+                          isRowHeader: true,
+                          cell: (n) => (
+                            <AriaLink
+                              href={href([
+                                "infrastructure",
+                                "nodes",
+                                n.id,
+                                "runtime",
+                              ])}
+                            >
+                              {n.name}
+                            </AriaLink>
+                          ),
+                        },
+                        {
+                          id: "version",
+                          header: "Agent version",
+                          cell: (n) => n.agent?.version ?? "Not reported",
+                        },
+                        {
+                          id: "haproxy",
+                          header: "HAProxy version",
+                          cell: (n) => n.haproxy_version || "Not reported",
+                        },
+                        {
+                          id: "fresh",
+                          header: "Observation",
+                          cell: (n) =>
+                            n.agent_fresh ? "Current" : "Last reported",
+                        },
+                      ]}
+                      emptyState={
+                        <EmptyState
+                          title="No agent versions yet"
+                          description="Enroll a node to see its reported software version."
+                        />
+                      }
+                    />
+                  </Section>
+                  <HAProxySoftware
+                    client={client}
+                    nodes={installationSettings ? fleet.nodes : scopedNodes}
+                    managerVersion={fleet.manager_build?.version}
                   />
-                </Section>
+                  {installationSettings && (
+                    <HAProxyManagerSoftware client={client} />
+                  )}
+                </>
               )}
               {(!installationSettings || settingsTab === "recovery") && (
                 <Section

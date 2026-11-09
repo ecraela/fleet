@@ -10,10 +10,10 @@ import (
 )
 
 type AgentObservation struct {
-	Build          *buildinfo.Info
-	HAProxyVersion string
-	LastSeen       time.Time
-	Connected      bool
+	Build          *buildinfo.Info `json:"build"`
+	HAProxyVersion string          `json:"haproxy_version"`
+	LastSeen       time.Time       `json:"last_seen"`
+	Connected      bool            `json:"connected"`
 }
 type AgentBuildStore interface {
 	AgentBuilds(context.Context, string, []string) (map[string]AgentObservation, error)

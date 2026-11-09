@@ -33,6 +33,25 @@ read the expanded manifest; older host tools reject the new artifact names. The
 new installer still accepts older signed releases for rollback. Linux installs
 retain the verified legal files beside the pinned executable.
 
+After a qualified release is installed, a Linux/systemd node can enable the
+separate root-owned updater with the same signed bundle and its fixed manager
+origin:
+
+```sh
+python3 -I ./release-vMAJOR.MINOR.PATCH/agentctl.py enable-updates \
+  --config /srv/haproxy-agent/agentctl.json \
+  --release ./release-vMAJOR.MINOR.PATCH --version vMAJOR.MINOR.PATCH \
+  --manager-url https://manager.example.com:8443
+```
+
+The Software tab shows host updater readiness and offers exact signed releases.
+The updater polls desired state with the node's existing mTLS identity, verifies
+the bundle independently, checks local resources, retains the old executable,
+and reports fresh post-change discovery. HAProxy itself stays running during an
+agent-only update; telemetry and management from that node can pause while the
+agent restarts. An offline Ed25519 release must be staged on the host and
+selected from a catalog imported with its independently provisioned public key.
+
 To download the example candidate:
 
 ```bash
@@ -145,6 +164,26 @@ restarts; upgrading HAProxy itself is a separate maintenance/drain operation.
 Both old and new releases must support protocol 1 and state schema 1. Store
 identity, command receipts, configuration artifacts, TLS/ACME account/order state
 outside the software installation directory and include them in backups.
+
+UI-managed agent targets must also declare `managed_upgrades: true` in their
+signed manifest. After observed success, the host updater replaces its own
+script atomically with the target's verified `agentctl.py`. A completion retry
+repairs a missing updater script without activating the agent twice.
+For an offline Ed25519 publisher, import each future bundle on the agent host
+before selecting it in the UI:
+
+```sh
+sudo python3 -I /srv/haproxy-agent/software/updater/agentctl.py stage-release \
+  --config /srv/haproxy-agent/agentctl.json \
+  --release ./release-vMAJOR.MINOR.PATCH --version vMAJOR.MINOR.PATCH \
+  --public-key /etc/ecraela-fleet/release-publisher.pub
+```
+
+The command verifies the same installed publisher key and stages the signed
+updater in private host storage. Native Linux agents also stage their local
+platform's binary; Docker agents still need the exact signed image available
+to the local engine. Public Sigstore releases can be fetched by the host updater
+directly.
 
 Invoke downloaded host tools with `python3 -I`, including verification snippets.
 Isolated Python excludes the current directory, `PYTHONPATH` and user packages

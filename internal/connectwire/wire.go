@@ -87,8 +87,17 @@ var Description = grpc.ServiceDesc{ServiceName: "ecraela.haproxy.connector.v1.Re
 const id = `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`
 
 var paths = regexp.MustCompile(`^/v1/(?:agent-setup|enrollment-status|clusters(?:/` + id + `/(?:enrollment-tokens|topology|events|incidents|rollouts|maintenance|certificates|listeners(?:/versions/` + id + `/rollback)?|applications(?:/status|/` + id + `/(?:traffic|requests|geography|traffic-rules|deploy|lifecycle|dns-intent|dns-delegation|versions/` + id + `/(?:rollback|traffic-rules)))?))?|fleet|nodes(?:/` + id + `/(?:metrics|history|events|revoke|discovery|operations|maintenance|configuration(?:/versions/` + id + `/rollback)?))?|enrollment-tokens)$`)
+var softwareReleases = regexp.MustCompile(`^/v1/software/releases$`)
+var softwareManagerRead = regexp.MustCompile(`^/v1/software/manager(?:/plan)?$`)
+var softwareManagerCancel = regexp.MustCompile(`^/v1/software/manager/` + id + `/cancel$`)
+var softwareNodeRead = regexp.MustCompile(`^/v1/nodes/` + id + `/software(?:/plan)?$`)
+var softwareNodeCancel = regexp.MustCompile(`^/v1/nodes/` + id + `/software/` + id + `/cancel$`)
 
 func Allowed(method, path string) bool {
+	if softwareReleases.MatchString(path) || softwareManagerRead.MatchString(path) || softwareManagerCancel.MatchString(path) || softwareNodeRead.MatchString(path) || softwareNodeCancel.MatchString(path) {
+		return method == "GET" && (softwareReleases.MatchString(path) || softwareManagerRead.MatchString(path) || softwareNodeRead.MatchString(path)) ||
+			method == "POST" && (softwareManagerCancel.MatchString(path) || path == "/v1/software/manager" || softwareNodeCancel.MatchString(path) || softwareNodeRead.MatchString(path) && strings.HasSuffix(path, "/software"))
+	}
 	if (strings.HasSuffix(path, "/geography") || strings.HasSuffix(path, "/traffic-rules")) && method != "GET" {
 		return false
 	}

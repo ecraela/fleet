@@ -7,10 +7,142 @@ import subprocess
 import tempfile
 import time
 import unittest
+import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import agentctl as ctl
+
+
+class HostUpdater(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.key, self.pub = self.root / 'key', self.root / 'key.pub'
+        ctl.run(['openssl', 'genpkey', '-algorithm', 'ED25519', '-out', self.key])
+        ctl.run(['openssl', 'pkey', '-in', self.key, '-pubout', '-out', self.pub])
+        self.install = self.root / 'installed'
+        (self.install / 'bundles').mkdir(parents=True)
+        self.install.chmod(0o700)
+        (self.install / 'updater').mkdir()
+        self.state = self.root / 'state'
+        self.state.mkdir()
+        self.node = str(uuid.uuid4())
+        ctl.private_json(self.state / 'identity.json', {'node': {'id': self.node}})
+        self.config = {'mode': 'docker', 'install_dir': str(self.install), 'state_dir': str(self.state)}
+        self.old = {'version': 'v0.1.0', 'revision': 'a' * 40,
+                    'artifacts': {'haproxy-agent-linux-amd64': 'b' * 64}}
+        ctl.private_json(self.install / 'deployment.json',
+                         {'schema': 1, 'current': self.old, 'previous': None, 'pending': None, 'trust': ctl.hashlib.sha256(self.pub.read_bytes()).hexdigest()})
+        ctl.private_json(self.install / 'updater.json',
+                         {'schema': 1, 'manager_url': 'https://manager.example.test', 'public_key': str(self.pub)})
+        self.version = 'v0.2.0'
+        self.script = b'#!/usr/bin/env python3\nprint("signed updater")\n'
+        self.bundle = self.install / 'bundles' / self.version
+        self.bundle.mkdir()
+        (self.bundle / 'agentctl.py').write_bytes(self.script)
+        self.manifest = {'schema': 1, 'repository': ctl.REPOSITORY, 'version': self.version,
+                         'revision': 'c' * 40, 'image': 'sha256:' + 'd' * 64,
+                         'protocol': 1, 'state_schema': 1, 'managed_upgrades': True,
+                         'compatibility': {'manager': {'min': 'v0.1.0', 'max': self.version},
+                                           'agent': {'min': 'v0.1.0', 'max': self.version}},
+                         'artifacts': {'agentctl.py': ctl.hashlib.sha256(self.script).hexdigest(),
+                                       'haproxy-agent-linux-amd64': 'e' * 64,
+                                       'haproxy-agent-linux-arm64': 'f' * 64}}
+        (self.bundle / 'release.json').write_text(json.dumps(self.manifest))
+        ctl.run(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin', '-in', self.bundle / 'release.json', '-out', self.bundle / 'release.sig'])
+        self.update = {'id': str(uuid.uuid4()), 'node_id': self.node, 'action': 'upgrade',
+                       'status': 'queued', 'target_version': self.version, 'expected_version': self.old['version'],
+                       'target_revision': self.manifest['revision'], 'platform': 'linux/amd64',
+                       'agent_sha256': 'e' * 64,
+                       'manifest_sha256': ctl.hashlib.sha256((self.bundle / 'release.json').read_bytes()).hexdigest(),
+                       'publisher': 'ed25519:' + ctl.hashlib.sha256(self.pub.read_bytes()).hexdigest()}
+        self.statuses = []
+
+    def manager_request(self, client, origin, method, path, body=None):
+        if method == 'GET':
+            return {'update': self.update, 'manager_build': {'version': 'v0.1.0', 'protocol': 1}}
+        if path.endswith('/status'):
+            self.statuses.append(body['status'])
+        return {}
+
+    def apply(self, c, folder, version, key, action, timeout):
+        self.assertEqual(folder, self.bundle)
+        self.assertEqual(version, self.version)
+        self.assertEqual(action, 'upgrade')
+        history = json.loads((self.install / 'deployment.json').read_text())
+        history.update(current=self.manifest, previous=self.old, pending=None, last_result='upgrade')
+        ctl.private_json(self.install / 'deployment.json', history)
+
+    def test_reconciles_signed_target_and_retries_only_after_host_verification(self):
+        with patch.object(ctl.platform, 'system', return_value='Linux'), \
+                patch.object(ctl.platform, 'machine', return_value='x86_64'), \
+                patch.object(ctl.os, 'geteuid', return_value=0), \
+                patch.object(ctl, 'updater_client', return_value=(object(), self.node)), \
+                patch.object(ctl, 'updater_request', side_effect=self.manager_request), \
+                patch.object(ctl, 'resource_preflight'), \
+                patch.object(ctl, 'apply', side_effect=self.apply) as apply:
+            ctl.reconcile(self.config, 5)
+            apply.assert_called_once()
+            self.assertEqual(self.statuses, ['preparing', 'activating', 'verifying', 'succeeded'])
+            updater = self.install / 'updater/agentctl.py'
+            self.assertEqual(updater.read_bytes(), self.script)
+            updater.unlink()  # Simulate a missing script on a completion retry.
+            self.update['status'] = 'verifying'
+            self.statuses.clear()
+            ctl.reconcile(self.config, 5)
+            apply.assert_called_once()
+            self.assertEqual(self.statuses, ['succeeded'])
+            self.assertEqual(updater.read_bytes(), self.script)
+
+    def test_invalid_signature_never_activates_and_reports_attention(self):
+        (self.bundle / 'release.sig').write_bytes(b'X' * 64)
+        with patch.object(ctl.platform, 'system', return_value='Linux'), \
+                patch.object(ctl.platform, 'machine', return_value='x86_64'), \
+                patch.object(ctl.os, 'geteuid', return_value=0), \
+                patch.object(ctl, 'updater_client', return_value=(object(), self.node)), \
+                patch.object(ctl, 'updater_request', side_effect=self.manager_request), \
+                patch.object(ctl, 'apply') as apply, \
+                self.assertRaises(ctl.InstallError):
+            ctl.reconcile(self.config, 5)
+        apply.assert_not_called()
+        self.assertEqual(self.statuses, ['needs_attention'])
+
+    def test_release_without_managed_updater_never_activates(self):
+        self.manifest.pop('managed_upgrades')
+        (self.bundle / 'release.json').write_text(json.dumps(self.manifest))
+        ctl.run(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                 '-in', self.bundle / 'release.json', '-out', self.bundle / 'release.sig'])
+        self.update['manifest_sha256'] = ctl.hashlib.sha256((self.bundle / 'release.json').read_bytes()).hexdigest()
+        with patch.object(ctl.platform, 'system', return_value='Linux'), \
+                patch.object(ctl.platform, 'machine', return_value='x86_64'), \
+                patch.object(ctl.os, 'geteuid', return_value=0), \
+                patch.object(ctl, 'updater_client', return_value=(object(), self.node)), \
+                patch.object(ctl, 'updater_request', side_effect=self.manager_request), \
+                patch.object(ctl, 'apply') as apply, \
+                self.assertRaises(ctl.InstallError):
+            ctl.reconcile(self.config, 5)
+        apply.assert_not_called()
+        self.assertEqual(self.statuses, ['needs_attention'])
+
+    def test_stages_offline_release_with_installed_publisher(self):
+        source = self.root / 'offline-release'
+        self.bundle.rename(source)
+        with patch.object(ctl.platform, 'system', return_value='Linux'), \
+                patch.object(ctl.os, 'geteuid', return_value=0):
+            ctl.stage_release(self.config, source, self.version, self.pub)
+        self.assertEqual((self.bundle / 'release.json').read_bytes(),
+                         (source / 'release.json').read_bytes())
+        self.assertEqual((self.bundle / 'agentctl.py').read_bytes(), self.script)
+        altered = {**self.manifest, 'revision': 'f' * 40}
+        (source / 'release.json').write_text(json.dumps(altered))
+        ctl.run(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                 '-in', source / 'release.json', '-out', source / 'release.sig'])
+        with patch.object(ctl.platform, 'system', return_value='Linux'), \
+                patch.object(ctl.os, 'geteuid', return_value=0), \
+                self.assertRaises(ctl.InstallError):
+            ctl.stage_release(self.config, source, self.version, self.pub)
 
 
 class Releases(unittest.TestCase):
