@@ -79,8 +79,24 @@ func (c *Client) retainBinding(id string, doc domain.ConfigurationDocument, fron
 	path := filepath.Join(dir, id+".json")
 	checkExisting := func() error {
 		previous, err := c.loadBinding(id)
-		encoded, _ := json.Marshal(previous)
-		if err != nil || !bytes.Equal(encoded, raw) {
+		if err != nil || len(previous.TrafficRules) != len(b.TrafficRules) {
+			return failure("configuration_history_missing")
+		}
+		for _, a := range doc.Applications {
+			if a.TrafficPolicy == nil || a.Disabled {
+				continue
+			}
+			profile := previous.TrafficRules[a.ID]
+			if profile != b.TrafficRules[a.ID] && (c.Traffic == nil || profile != dependencyProfile(c.Traffic.legacyRules(a.TrafficPolicy))) {
+				return failure("configuration_history_missing")
+			}
+		}
+		// A binding for this same raw artifact may predate selected Geo maps.
+		// Keep its immutable full-map profile; rollback validation accepts both.
+		b.TrafficRules = previous.TrafficRules
+		encoded, _ := json.Marshal(b)
+		stored, _ := json.Marshal(previous)
+		if !bytes.Equal(encoded, stored) {
 			return failure("configuration_history_missing")
 		}
 		return nil
