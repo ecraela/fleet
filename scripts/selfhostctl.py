@@ -33,7 +33,7 @@ import uuid
 import types
 
 
-AGENTCTL_SHA256 = '01e3f37fc1e56fed24e8c32cfe7899dbcfa98f6e9fe52e79977e2dfda1c99d11'
+AGENTCTL_SHA256 = '760a3ff1184eec1fa90f35f493b1f4bf36035a7611679b7096fb7b3d397ee218'
 
 
 def load_agentctl():

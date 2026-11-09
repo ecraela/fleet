@@ -128,6 +128,8 @@ def _verify_release(folder, expected, public_key=None):
         raise InstallError('Release version, repository, protocol or state format is incompatible')
     if not re.fullmatch(r'(?:ghcr\.io/ecraela/fleet@)?sha256:[a-f0-9]{64}', m.get('image', '')):
         raise InstallError('A signed registry digest is required; mutable tags are refused')
+    if 'compatibility' in m:
+        validate_compatibility(m['compatibility'], expected)
     if not isinstance(m.get('artifacts'), dict) or not 1 <= len(m['artifacts']) <= 12:
         raise InstallError('Invalid release artifact set')
     for name, digest in m['artifacts'].items():
@@ -135,6 +137,37 @@ def _verify_release(folder, expected, public_key=None):
                 or name in LEGAL_ARTIFACTS) or not isinstance(digest, str) or not DIGEST.fullmatch(digest):
             raise InstallError('Invalid release artifact name or checksum')
     return m,trust
+
+
+def validate_compatibility(value, version):
+    """Validate the signed, inclusive peer ranges used by managed upgrades."""
+    if not isinstance(value, dict) or set(value) != {'manager', 'agent'}:
+        raise InstallError('Invalid signed release compatibility')
+    if not isinstance(version, str) or not VERSION.fullmatch(version):
+        raise InstallError('Invalid signed release version')
+    for role in ('manager', 'agent'):
+        bounds = value[role]
+        if not isinstance(bounds, dict) or set(bounds) != {'min', 'max'}:
+            raise InstallError('Invalid signed release compatibility')
+        low, high = bounds['min'], bounds['max']
+        if (not isinstance(low, str) or not isinstance(high, str) or
+                not VERSION.fullmatch(low) or not VERSION.fullmatch(high) or
+                version_tuple(low) > version_tuple(high) or
+                not version_tuple(low) <= version_tuple(version) <= version_tuple(high)):
+            raise InstallError('Invalid signed release compatibility range')
+    return value
+
+
+def compatible_peer(manifest, peer_role, peer_version):
+    """A missing legacy range is unknown, never unlimited compatibility."""
+    if peer_role not in ('manager', 'agent'):
+        raise InstallError('Unknown peer role')
+    bounds = validate_compatibility(manifest.get('compatibility'), manifest.get('version'))[peer_role]
+    if not isinstance(peer_version, str) or not VERSION.fullmatch(peer_version):
+        raise InstallError('Peer release version is unknown')
+    if not version_tuple(bounds['min']) <= version_tuple(peer_version) <= version_tuple(bounds['max']):
+        raise InstallError('Peer release is outside the signed compatibility range')
+    return True
 
 
 def identity(state):

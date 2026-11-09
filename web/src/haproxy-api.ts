@@ -747,6 +747,7 @@ export interface HAProxyCluster {
 export interface HAProxyNode {
   agent?: HAProxyAgentBuild;
   agent_fresh?: boolean;
+  haproxy_version?: string;
   id: string;
   organization_id: string;
   cluster_id: string;
@@ -760,6 +761,7 @@ export interface HAProxyNode {
 }
 
 export interface HAProxyFleet {
+  manager_build?: HAProxyAgentBuild;
   clusters: HAProxyCluster[];
   nodes: HAProxyNode[];
   next_cursor: string | null;

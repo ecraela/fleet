@@ -27,7 +27,7 @@ func TestAgentBuildInventoryTenantBoundary(t *testing.T) {
 		}
 	}
 	got, err := f.store.AgentBuilds(t.Context(), f.org, []string{n.ID, other.ID})
-	if err != nil || len(got) != 1 || got[n.ID].Build.Version != "v0.1.0" {
+	if err != nil || len(got) != 1 || got[n.ID].Build.Version != "v0.1.0" || got[n.ID].HAProxyVersion == "" {
 		t.Fatal(got, err)
 	}
 	if r := f.request("GET", "/v1/fleet", nil, false); r.Code != 401 {
@@ -35,12 +35,13 @@ func TestAgentBuildInventoryTenantBoundary(t *testing.T) {
 	}
 	r := f.request("GET", "/v1/fleet", nil, true)
 	var fleet struct {
-		Nodes []FleetNode `json:"nodes"`
+		Nodes   []FleetNode     `json:"nodes"`
+		Manager *buildinfo.Info `json:"manager_build"`
 	}
 	if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &fleet) != nil {
 		t.Fatal(r.Code, r.Body.String())
 	}
-	if len(fleet.Nodes) != 1 || fleet.Nodes[0].Agent == nil || !fleet.Nodes[0].AgentFresh {
+	if len(fleet.Nodes) != 1 || fleet.Nodes[0].Agent == nil || !fleet.Nodes[0].AgentFresh || fleet.Nodes[0].HAProxyVersion == "" || fleet.Manager == nil {
 		t.Fatal(r.Body.String())
 	}
 	if strings.Contains(r.Body.String(), other.ID) {

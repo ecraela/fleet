@@ -19,6 +19,13 @@ the exact version, source revision, protocol/state schema, binary checksums and
 GHCR image digest. Published Fleet assets must be downloadable without a GitHub
 account. Use one exact qualified Fleet tag in place of `vMAJOR.MINOR.PATCH` below.
 
+New releases also require a reviewed
+[compatibility entry](../deploy/release-compatibility/README.md). Its signed
+inclusive manager/agent version ranges are the input to managed-upgrade
+planning. Matching protocol numbers alone do not establish a safe rolling
+upgrade, and existing releases without signed ranges are treated as unknown by
+that planner. Manual signed installation and rollback remain available.
+
 The [distribution packaging](third-party.md) also signs
 the AGPL text, third-party notices, dependency inventory, matching project source
 archive and source file hashes. Use that candidate's authenticated installer to

@@ -21,8 +21,9 @@ import (
 var errPartialFleetObservations = errors.New("some node status observations are invalid")
 
 type FleetNode struct {
-	Agent      *buildinfo.Info `json:"agent,omitempty"`
-	AgentFresh bool            `json:"agent_fresh"`
+	Agent          *buildinfo.Info `json:"agent,omitempty"`
+	AgentFresh     bool            `json:"agent_fresh"`
+	HAProxyVersion string          `json:"haproxy_version,omitempty"`
 	domain.Node
 	TelemetryFresh   bool       `json:"telemetry_fresh"`
 	ScrapeOK         bool       `json:"scrape_ok"`
@@ -78,6 +79,7 @@ func (s *Server) fleet(w http.ResponseWriter, r *http.Request, org string) {
 			if o, exists := observations[n.ID]; exists {
 				result[i].Agent = o.Build
 				result[i].AgentFresh = o.Connected && time.Since(o.LastSeen) <= 6*time.Second
+				result[i].HAProxyVersion = o.HAProxyVersion
 			}
 		}
 	}
@@ -86,7 +88,7 @@ func (s *Server) fleet(w http.ResponseWriter, r *http.Request, org string) {
 	if next != "" {
 		nextCursor = next
 	}
-	writeJSON(w, 200, map[string]any{"clusters": clusters, "nodes": result, "next_cursor": nextCursor, "partial": err != nil})
+	writeJSON(w, 200, map[string]any{"clusters": clusters, "nodes": result, "next_cursor": nextCursor, "partial": err != nil, "manager_build": buildinfo.Current()})
 }
 
 func (s *Server) fleetObservations(ctx context.Context, org string, nodes []FleetNode) error {

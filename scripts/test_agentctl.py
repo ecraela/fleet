@@ -89,6 +89,32 @@ class Releases(unittest.TestCase):
             with self.assertRaises(ctl.InstallError):
                 ctl.verify_release(path, 'v0.1.0', self.pub)
 
+    def test_signed_peer_ranges_gate_managed_upgrade(self):
+        ranges = {'manager': {'min': 'v0.1.0-rc.20', 'max': 'v0.1.0'},
+                  'agent': {'min': 'v0.1.0-rc.21', 'max': 'v0.1.0'}}
+        path, manifest = self.release(compatibility=ranges)
+        verified = ctl.verify_release(path, 'v0.1.0', self.pub)
+        self.assertTrue(ctl.compatible_peer(verified, 'manager', 'v0.1.0-rc.21'))
+        with self.assertRaisesRegex(ctl.InstallError, 'outside the signed'):
+            ctl.compatible_peer(verified, 'agent', 'v0.1.0-rc.20')
+        with self.assertRaisesRegex(ctl.InstallError, 'unknown'):
+            ctl.compatible_peer(verified, 'agent', 'dev')
+        legacy = {k: v for k, v in manifest.items() if k != 'compatibility'}
+        with self.assertRaisesRegex(ctl.InstallError, 'Invalid signed release compatibility'):
+            ctl.compatible_peer(legacy, 'agent', 'v0.1.0')
+
+    def test_malformed_signed_peer_ranges_are_refused(self):
+        good = {'manager': {'min': 'v0.1.0-rc.20', 'max': 'v0.1.0'},
+                'agent': {'min': 'v0.1.0-rc.21', 'max': 'v0.1.0'}}
+        for ranges in (None, {}, {'manager': good['manager']},
+                       {**good, 'agent': {'min': 'v0.2.0', 'max': 'v0.1.0'}},
+                       {**good, 'agent': {'min': 'v0.1.0', 'max': 'v0.1.0-rc.21'}},
+                       {**good, 'agent': {'min': 'latest', 'max': 'v0.1.0'}},
+                       {**good, 'agent': {'min': 'v0.1.0', 'max': 'v0.1.0', 'extra': 1}}):
+            path, _ = self.release(compatibility=ranges)
+            with self.assertRaises(ctl.InstallError):
+                ctl.verify_release(path, 'v0.1.0', self.pub)
+
     def test_signed_legal_artifacts_are_allowed_but_arbitrary_paths_are_not(self):
         artifacts = {'haproxy-agent-linux-arm64': 'c' * 64,
                      **{name: 'd' * 64 for name in ctl.LEGAL_ARTIFACTS}}

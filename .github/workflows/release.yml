@@ -90,7 +90,7 @@ jobs:
           RELEASE_REVISION: ${{ github.sha }}
           RELEASE_IMAGE: ghcr.io/ecraela/fleet@${{ steps.image.outputs.digest }}
         run: |
-          python3 scripts/release.py --output .build.local/release --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION" --image "$RELEASE_IMAGE"
+          python3 scripts/release.py --output .build.local/release --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION" --image "$RELEASE_IMAGE" --compatibility-file "deploy/release-compatibility/$RELEASE_VERSION.json"
           python3 scripts/verify_release_images.py .build.local/release
           cosign sign --yes "$RELEASE_IMAGE"
           cosign sign-blob --yes --bundle .build.local/release/release.sigstore.json .build.local/release/release.json

@@ -117,7 +117,7 @@ export function HAProxyWorkspace({
     route.kind === "list" && route.section === "settings" && !requestedCluster;
   const settingsTabs = [
     ...(settingsContent ? [{ id: "access", label: "Access" }] : []),
-    { id: "software", label: "Agent software" },
+    { id: "software", label: "Software" },
     { id: "recovery", label: "Backups & recovery" },
   ];
   const settingsTab = settingsTabs.some(
@@ -734,9 +734,13 @@ export function HAProxyWorkspace({
               {(!installationSettings || settingsTab === "software") && (
                 <Section
                   layout="stack"
-                  title="Agent software"
-                  description="Version observations from your nodes. Host installers verify signed releases; the agent never replaces itself."
+                  title="Software inventory"
+                  description="Versions reported by running processes. Host installers verify signed releases; the agent never replaces itself."
                 >
+                  <p>
+                    Manager version:{" "}
+                    {fleet.manager_build?.version ?? "Not reported"}
+                  </p>
                   <PaginatedDataTable
                     aria-label="Agent software versions"
                     itemLabel="nodes"
@@ -764,6 +768,11 @@ export function HAProxyWorkspace({
                         id: "version",
                         header: "Agent version",
                         cell: (n) => n.agent?.version ?? "Not reported",
+                      },
+                      {
+                        id: "haproxy",
+                        header: "HAProxy version",
+                        cell: (n) => n.haproxy_version || "Not reported",
                       },
                       {
                         id: "fresh",

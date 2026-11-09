@@ -13,6 +13,7 @@ check: web-check
 	$(GO) vet ./...
 	python3 -m py_compile scripts/hardening.py scripts/recovery.py scripts/test_recovery.py scripts/standalone.py scripts/connector.py
 	python3 -m py_compile scripts/agentctl.py scripts/release.py scripts/agent_releases.py scripts/test_agentctl.py
+	python3 -m py_compile scripts/test_release_compatibility.py
 	python3 -m py_compile scripts/verify_release_images.py scripts/linux_installer_smoke.py scripts/prepare_release_lab.py
 	python3 -m py_compile scripts/selfhostctl.py scripts/selfhost_smoke.py scripts/test_selfhostctl.py
 	python3 -m py_compile scripts/onboarding.py
