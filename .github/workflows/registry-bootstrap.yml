@@ -54,9 +54,8 @@ jobs:
           context: ${{ runner.temp }}/fleet-registry-bootstrap
           push: true
           tags: ghcr.io/ecraela/fleet:bootstrap-${{ github.sha }}
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-        with:
-          cosign-release: v3.1.4
+      - name: Install checksum-pinned Cosign
+        run: bash scripts/install_cosign.sh
       - name: Sign the documentation image digest
         env:
           IMAGE: ghcr.io/ecraela/fleet@${{ steps.image.outputs.digest }}

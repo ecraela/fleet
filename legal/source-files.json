@@ -394,6 +394,7 @@
   "scripts/geography.py",
   "scripts/hardening.py",
   "scripts/incidents.py",
+  "scripts/install_cosign.sh",
   "scripts/lab.py",
   "scripts/legal.py",
   "scripts/linux_installer_smoke.py",
