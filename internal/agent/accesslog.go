@@ -33,11 +33,10 @@ type accessSource interface {
 func sendAccessLoop(ctx context.Context, cfg Config, trust *x509.CertPool, receiver accessSource) {
 	u, _ := url.Parse(cfg.IngestURL)
 	u.Path = "/v1/logs/write"
-	// The original 256-record batch every 250 ms capped collection at 1,024
-	// requests/s per node, below ordinary pilot traffic. Keep the faster
-	// bounded drain below the ingest budget of 100 uploads per ten seconds;
-	// a 100 ms tick can exceed that fixed window at its boundary.
-	ticker := time.NewTicker(125 * time.Millisecond)
+	// A full 256 KiB batch can hold fewer than 512 real request events. Drain
+	// quickly enough for a busy node while staying below the ingest budget of
+	// 100 uploads per ten seconds, even at a fixed-window boundary.
+	ticker := time.NewTicker(105 * time.Millisecond)
 	defer ticker.Stop()
 	var client *http.Client
 	var certificate string
