@@ -186,6 +186,35 @@ func TestListenerTransactionPreservesLocalHTTPAndDetectsDrift(t *testing.T) {
 		t.Fatal("disable lost local fields")
 	}
 }
+
+func TestListenerProjectionAcceptsDataplaneTrimmedMarkerAfterReload(t *testing.T) {
+	policy, listener := listenerFixture(t)
+	client := &Client{TLS: policy}
+	bind, err := client.listenerObject(listener)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frontend := object{}
+	set(frontend, "name", listener.Name)
+	set(frontend, "description", listenerDescription("", listener))
+	set(frontend, "binds", map[string]object{listenerBind: bind})
+	set(frontend, "http_request_rule_list", listenerRules(nil, listener.Name))
+	for _, description := range []string{
+		listenerDescription("", listener),
+		strings.TrimPrefix(listenerDescription("", listener), " "),
+	} {
+		set(frontend, "description", description)
+		projected, err := client.projectListeners([]object{frontend}, nil)
+		if err != nil || !domain.SameListeners(projected, []domain.HTTPSListener{listener}) {
+			t.Fatalf("valid listener marker rejected after reload: %v", err)
+		}
+	}
+	set(frontend, "description", "x"+strings.TrimPrefix(listenerDescription("", listener), " "))
+	if _, err := client.projectListeners([]object{frontend}, nil); err == nil {
+		t.Fatal("modified listener marker was accepted")
+	}
+}
+
 func TestListenerPolicyBoundsAndIncomingPortProfile(t *testing.T) {
 	c := &Client{}
 	path := filepath.Join(t.TempDir(), "policy.json")

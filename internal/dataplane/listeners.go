@@ -246,7 +246,14 @@ func (c *Client) projectListeners(frontends []object, apps []domain.HTTPApplicat
 	out := []domain.HTTPSListener{}
 	for _, f := range frontends {
 		description := decode[string](f["description"])
-		index := strings.Index(description, listenerMarker)
+		marker := listenerMarker
+		index := strings.Index(description, marker)
+		// Data Plane API trims a leading space from the description when it
+		// reparses HAProxy's on-disk configuration after a reload.
+		if index < 0 && strings.HasPrefix(description, listenerMarker[1:]) {
+			marker = listenerMarker[1:]
+			index = 0
+		}
 		binds := decode[map[string]object](f["binds"])
 		managed, hasBind := binds[listenerBind]
 		rules := decode[[]object](f["http_request_rule_list"])
@@ -261,9 +268,13 @@ func (c *Client) projectListeners(frontends []object, apps []domain.HTTPApplicat
 			}
 			continue
 		}
-		raw, err := base64.RawURLEncoding.DecodeString(description[index+len(listenerMarker):])
+		raw, err := base64.RawURLEncoding.DecodeString(description[index+len(marker):])
 		var l domain.HTTPSListener
-		if err != nil || len(raw) > 2048 || json.Unmarshal(raw, &l) != nil || !l.Valid() || l.Name != decode[string](f["name"]) || listenerDescription(description[:index], l) != description {
+		if err != nil || len(raw) > 2048 || json.Unmarshal(raw, &l) != nil || !l.Valid() || l.Name != decode[string](f["name"]) {
+			return nil, failure("configuration_unsupported")
+		}
+		canonical := listenerDescription(description[:index], l)
+		if canonical != description && !(index == 0 && marker != listenerMarker && strings.TrimPrefix(canonical, " ") == description) {
 			return nil, failure("configuration_unsupported")
 		}
 		expected, err := c.listenerObject(l)
