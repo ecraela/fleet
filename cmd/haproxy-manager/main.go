@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -175,6 +177,8 @@ func serve(args []string) error {
 	connectorDir := flags.String("connector-state-dir", os.Getenv("HAPROXY_CONNECTOR_STATE_DIR"), "private persistent connector identity directory")
 	connectorCA := flags.String("connector-ca-file", os.Getenv("HAPROXY_CONNECTOR_CA_FILE"), "optional private relay CA; system roots by default")
 	webhooksFile := flags.String("incident-webhooks-file", os.Getenv("HAPROXY_INCIDENT_WEBHOOKS_FILE"), "optional private installation configuration for tenant incident webhooks")
+	releaseCatalogFile := flags.String("release-catalog-file", os.Getenv("HAPROXY_RELEASE_CATALOG_FILE"), "host-verified, read-only signed release catalog")
+	softwareHostTokenFile := flags.String("software-host-token-file", os.Getenv("HAPROXY_SOFTWARE_HOST_TOKEN_FILE"), "separate host-only updater credential file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -238,7 +242,22 @@ func serve(args []string) error {
 			return err
 		}
 	}
-	app, err := server.New(server.Config{Role: *role, Store: db, Authority: authority, Operators: operators, MetricsURL: *metrics, LogsURL: *logs, Browser: browser, Local: server.LocalConfig{Origin: *localOrigin, InsecureCookies: *localInsecure}, AgentSetup: setup, Notifications: notifications, Connector: server.ConnectorConfig{RelayURL: *relayURL, StateDir: *connectorDir, CAFile: *connectorCA}})
+	var softwareHostTokenDigest string
+	var softwareHostOrganization string
+	if *role == "manager" && *softwareHostTokenFile != "" {
+		info, statErr := os.Lstat(*softwareHostTokenFile)
+		if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 || info.Size() > 512 {
+			return errors.New("software host token file must be a bounded non-writable regular file")
+		}
+		data, readErr := os.ReadFile(*softwareHostTokenFile)
+		if readErr != nil || len(strings.TrimSpace(string(data))) < 32 || len(strings.TrimSpace(string(data))) > 256 {
+			return errors.New("invalid software host updater credential")
+		}
+		sum := sha256.Sum256([]byte(strings.TrimSpace(string(data))))
+		softwareHostTokenDigest = hex.EncodeToString(sum[:])
+		softwareHostOrganization = *org
+	}
+	app, err := server.New(server.Config{Role: *role, Store: db, Authority: authority, Operators: operators, MetricsURL: *metrics, LogsURL: *logs, Browser: browser, Local: server.LocalConfig{Origin: *localOrigin, InsecureCookies: *localInsecure}, AgentSetup: setup, ReleaseCatalogFile: *releaseCatalogFile, InstallationOrganizationID: softwareHostOrganization, SoftwareHostTokenSHA256: softwareHostTokenDigest, Notifications: notifications, Connector: server.ConnectorConfig{RelayURL: *relayURL, StateDir: *connectorDir, CAFile: *connectorCA}})
 	if err != nil {
 		return err
 	}

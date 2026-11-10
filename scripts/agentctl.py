@@ -23,10 +23,14 @@ import platform
 import pwd
 import re
 import shutil
+import ssl
 import stat
 import subprocess
 import tempfile
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 VERSION = re.compile(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[a-z0-9.-]+)?\Z')
 DIGEST = re.compile(r'[a-f0-9]{64}\Z')
@@ -128,6 +132,10 @@ def _verify_release(folder, expected, public_key=None):
         raise InstallError('Release version, repository, protocol or state format is incompatible')
     if not re.fullmatch(r'(?:ghcr\.io/ecraela/fleet@)?sha256:[a-f0-9]{64}', m.get('image', '')):
         raise InstallError('A signed registry digest is required; mutable tags are refused')
+    if 'compatibility' in m:
+        validate_compatibility(m['compatibility'], expected)
+    if 'managed_upgrades' in m and type(m['managed_upgrades']) is not bool:
+        raise InstallError('Invalid managed upgrade capability')
     if not isinstance(m.get('artifacts'), dict) or not 1 <= len(m['artifacts']) <= 12:
         raise InstallError('Invalid release artifact set')
     for name, digest in m['artifacts'].items():
@@ -135,6 +143,37 @@ def _verify_release(folder, expected, public_key=None):
                 or name in LEGAL_ARTIFACTS) or not isinstance(digest, str) or not DIGEST.fullmatch(digest):
             raise InstallError('Invalid release artifact name or checksum')
     return m,trust
+
+
+def validate_compatibility(value, version):
+    """Validate the signed, inclusive peer ranges used by managed upgrades."""
+    if not isinstance(value, dict) or set(value) != {'manager', 'agent'}:
+        raise InstallError('Invalid signed release compatibility')
+    if not isinstance(version, str) or not VERSION.fullmatch(version):
+        raise InstallError('Invalid signed release version')
+    for role in ('manager', 'agent'):
+        bounds = value[role]
+        if not isinstance(bounds, dict) or set(bounds) != {'min', 'max'}:
+            raise InstallError('Invalid signed release compatibility')
+        low, high = bounds['min'], bounds['max']
+        if (not isinstance(low, str) or not isinstance(high, str) or
+                not VERSION.fullmatch(low) or not VERSION.fullmatch(high) or
+                version_tuple(low) > version_tuple(high) or
+                not version_tuple(low) <= version_tuple(version) <= version_tuple(high)):
+            raise InstallError('Invalid signed release compatibility range')
+    return value
+
+
+def compatible_peer(manifest, peer_role, peer_version):
+    """A missing legacy range is unknown, never unlimited compatibility."""
+    if peer_role not in ('manager', 'agent'):
+        raise InstallError('Unknown peer role')
+    bounds = validate_compatibility(manifest.get('compatibility'), manifest.get('version'))[peer_role]
+    if not isinstance(peer_version, str) or not VERSION.fullmatch(peer_version):
+        raise InstallError('Peer release version is unknown')
+    if not version_tuple(bounds['min']) <= version_tuple(peer_version) <= version_tuple(bounds['max']):
+        raise InstallError('Peer release is outside the signed compatibility range')
+    return True
 
 
 def identity(state):
@@ -473,13 +512,419 @@ def recover(c, timeout):
         print(json.dumps({'result': 'recovered', 'version': history['current']['version']}))
 
 
+def update_origin(value):
+    parsed = urllib.parse.urlsplit(value)
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or
+            parsed.path or parsed.query or parsed.fragment or not 0 < len(value) <= 255 or
+            any(ord(ch) < 33 for ch in value)):
+        raise InstallError('Updater manager URL must be an exact HTTPS origin')
+    _ = parsed.port
+    return value.rstrip('/')
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, url):
+        raise InstallError('Manager redirects are refused')
+
+
+class ReleaseRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, url):
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme != 'https' or parsed.hostname not in {
+                'github.com', 'release-assets.githubusercontent.com', 'objects.githubusercontent.com'}:
+            raise InstallError('Release asset redirect left the fixed publisher')
+        return super().redirect_request(request, fp, code, msg, headers, url)
+
+
+def updater_client(state):
+    identity_state = json.loads(regular(Path(state) / 'identity.json', 128 << 10))
+    if not isinstance(identity_state.get('node', {}).get('id'), str):
+        raise InstallError('Updater identity is missing a node ID')
+    ca = identity_state.get('ca_pem')
+    cert = identity_state.get('certificate_pem')
+    key = identity_state.get('key_pem')
+    if not all(isinstance(value, str) and 0 < len(value) < 32768 for value in (ca, cert, key)):
+        raise InstallError('Updater requires a complete manager-issued mTLS identity')
+    context = ssl.create_default_context(cadata=ca)
+    with tempfile.TemporaryDirectory(prefix='agent-updater-tls-') as directory:
+        certificate, private = Path(directory) / 'cert', Path(directory) / 'key'
+        certificate.write_text(cert)
+        private.write_text(key)
+        private.chmod(0o600)
+        context.load_cert_chain(certificate, private)
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                                       urllib.request.HTTPSHandler(context=context), NoRedirect()), identity_state['node']['id']
+
+
+def updater_request(client, origin, method, path, body=None):
+    data = None if body is None else json.dumps(body, separators=(',', ':')).encode()
+    request = urllib.request.Request(origin + path, data=data, method=method,
+                                     headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
+    try:
+        with client.open(request, timeout=10) as response:
+            if response.status != 200:
+                raise InstallError('Manager rejected updater request')
+            raw = response.read((128 << 10) + 1)
+    except urllib.error.HTTPError as error:
+        # Do not print response bodies: they may contain deployment context.
+        raise InstallError(f'Manager rejected updater request ({error.code})') from None
+    if len(raw) > 128 << 10:
+        raise InstallError('Manager response exceeds updater limit')
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise InstallError('Invalid manager updater response')
+    return value
+
+
+def release_asset(version, name, maximum):
+    if not VERSION.fullmatch(version) or not (re.fullmatch(r'release\.(?:json|sigstore\.json)|(?:agent|selfhost)ctl\.py|selfhost\.json|haproxy-(?:agent|manager)-linux-(?:amd64|arm64)', name) or name in LEGAL_ARTIFACTS):
+        raise InstallError('Invalid exact release asset')
+    url = f'https://github.com/{REPOSITORY}/releases/download/{version}/{name}'
+    opener = urllib.request.build_opener(ReleaseRedirect())
+    request = urllib.request.Request(url, headers={'Accept': 'application/octet-stream', 'User-Agent': 'ecraela-fleet-updater/1'})
+    with opener.open(request, timeout=30) as response:
+        if response.status != 200:
+            raise InstallError('Release asset unavailable')
+        if response.headers.get('Content-Length') and int(response.headers['Content-Length']) > maximum:
+            raise InstallError('Release asset exceeds updater limit')
+        raw = response.read(maximum + 1)
+    if len(raw) > maximum:
+        raise InstallError('Release asset exceeds updater limit')
+    return raw
+
+
+def signed_bundle(root, c, version, publisher, public_key=None, source=None):
+    if not VERSION.fullmatch(version):
+        raise InstallError('Invalid exact release version')
+    bundle = root / 'bundles' / version
+    if bundle.exists():
+        verify_cached_bundle(bundle, c, version, publisher, public_key)
+        return bundle
+    if publisher != 'sigstore:' + REPOSITORY and not publisher.startswith('ed25519:'):
+        raise InstallError('Unknown release publisher')
+    if publisher.startswith('ed25519:') and source is None:
+        raise InstallError('Offline release bundle is not staged on this host')
+    staging = Path(tempfile.mkdtemp(prefix='.bundle-', dir=root / 'bundles'))
+    try:
+        names = ['release.json', 'release.sig' if public_key else 'release.sigstore.json', 'agentctl.py']
+        if c['mode'] == 'linux':
+            arch = {'aarch64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())
+            if arch not in ('amd64', 'arm64'):
+                raise InstallError('Unsupported Linux agent architecture')
+            names.append('haproxy-agent-linux-' + arch)
+        for name in names:
+            maximum = MAX_BINARY if name.startswith('haproxy-agent-') else (1 << 20)
+            raw = regular(source / name, maximum) if source is not None else release_asset(version, name, maximum)
+            path = staging / name
+            path.write_bytes(raw)
+            path.chmod(0o600)
+        verify_cached_bundle(staging, c, version, publisher, public_key)
+        os.replace(staging, bundle)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
+    return bundle
+
+
+def verify_cached_bundle(bundle, c, version, publisher, public_key=None):
+    manifest, trust = _verify_release(bundle, version, public_key)
+    if publisher != ('ed25519:' + trust if public_key else trust):
+        raise InstallError('Release publisher differs from desired state')
+    names = ['agentctl.py']
+    if c['mode'] == 'linux':
+        arch = {'aarch64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())
+        if arch not in ('amd64', 'arm64'):
+            raise InstallError('Unsupported Linux agent architecture')
+        names.append('haproxy-agent-linux-' + arch)
+    for name in names:
+        maximum = MAX_BINARY if name.startswith('haproxy-agent-') else (1 << 20)
+        if hashlib.sha256(regular(bundle / name, maximum)).hexdigest() != manifest['artifacts'].get(name):
+            raise InstallError('Cached artifact differs from signed manifest')
+    return manifest
+
+
+def resource_preflight(c, root, bundle):
+    needed = (512 << 20) if c['mode'] == 'docker' else (128 << 20)
+    if shutil.disk_usage(root).free < needed:
+        raise InstallError('Insufficient local disk space for retained release and rollback')
+    try:
+        available = next(int(line.split()[1]) * 1024 for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))
+    except (OSError, StopIteration, ValueError, IndexError):
+        raise InstallError('Available memory cannot be checked') from None
+    if available < 128 << 20:
+        raise InstallError('Insufficient available memory for agent upgrade')
+    if c['mode'] == 'linux':
+        arch = {'aarch64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())
+        if shutil.disk_usage(bundle).free < max(needed, (bundle / ('haproxy-agent-linux-' + arch)).stat().st_size * 2):
+            raise InstallError('Insufficient space to retain the previous agent binary')
+
+
+def update_profile(root):
+    value = json.loads(regular(root / 'updater.json', 65536))
+    if (set(value) != {'schema', 'manager_url', 'public_key'} or value['schema'] != 1 or
+            not isinstance(value['public_key'], str)):
+        raise InstallError('Invalid host updater profile')
+    update_origin(value['manager_url'])
+    key = Path(value['public_key']) if value['public_key'] else None
+    if key:
+        regular(key, 16384)
+    return value, key
+
+
+def stage_updater(c, folder, version, manager_url, public_key=None):
+    if platform.system() != 'Linux' or os.geteuid() != 0:
+        raise InstallError('Automatic host updates require local Linux root and systemd')
+    origin = update_origin(manager_url)
+    manifest, publisher = _verify_release(folder, version, public_key)
+    if manifest.get('managed_upgrades') is not True:
+        raise InstallError('Current signed release does not support managed updates')
+    root = Path(c['install_dir'])
+    if any(re.search(r'[\s%"\\]', value) for value in (str(root), c['state_dir'], c['_config_path'])):
+        raise InstallError('Updater paths must be literal systemd paths without whitespace or substitutions')
+    with locked(c):
+        history = json.loads(regular(root / 'deployment.json'))
+        if history.get('pending') or not history.get('current') or history['current'] != manifest:
+            raise InstallError('Enable updates only for the currently installed signed release')
+        if history.get('trust') != publisher:
+            raise InstallError('Updater trust root differs from the installed release')
+        root.joinpath('bundles').mkdir(mode=0o700, exist_ok=True)
+        signed_bundle(root, c, version, 'ed25519:' + publisher if public_key else publisher, public_key, Path(folder))
+        script = regular(Path(folder) / 'agentctl.py', 1 << 20)
+        if hashlib.sha256(script).hexdigest() != manifest['artifacts'].get('agentctl.py'):
+            raise InstallError('Updater script differs from signed release')
+        updater_dir = root / 'updater'
+        updater_dir.mkdir(mode=0o700, exist_ok=True)
+        updater = updater_dir / 'agentctl.py'
+        if updater.exists() and regular(updater, 1 << 20) != script:
+            raise InstallError('An updater is already installed; update through a signed release')
+        if not updater.exists():
+            updater.write_bytes(script)
+            updater.chmod(0o700)
+        profile = {'schema': 1, 'manager_url': origin, 'public_key': str(public_key.resolve()) if public_key else ''}
+        private_json(root / 'updater.json', profile)
+        python = shutil.which('python3')
+        if not python or not Path(python).is_absolute():
+            raise InstallError('An absolute Python 3 executable is required')
+        command = ' '.join(json.dumps(str(value)) for value in (python, '-I', updater, 'reconcile', '--config', c['_config_path']))
+        service = updater_dir / 'ecraela-haproxy-updater.service'
+        timer = updater_dir / 'ecraela-haproxy-updater.timer'
+        service.write_text('[Unit]\nDescription=Reconcile signed Ecraela agent release\nAfter=network-online.target\nWants=network-online.target\n'
+                           '[Service]\nType=oneshot\nTimeoutStartSec=15min\nExecStart=' + command + '\nNoNewPrivileges=true\nPrivateTmp=true\n'
+                           'ProtectSystem=strict\nProtectHome=true\nReadWritePaths=' + str(root) + ' ' + c['state_dir'] + '\n')
+        timer.write_text('[Unit]\nDescription=Check desired Ecraela agent release\n[Timer]\nOnBootSec=30s\n'
+                         'OnUnitInactiveSec=30s\nRandomizedDelaySec=5s\nPersistent=true\n'
+                         '[Install]\nWantedBy=timers.target\n')
+        service.chmod(0o644)
+        timer.chmod(0o644)
+        run(['systemctl', 'link', service, timer])
+        run(['systemctl', 'daemon-reload'])
+        run(['systemctl', 'enable', '--now', 'ecraela-haproxy-updater.timer'])
+    print(json.dumps({'result': 'updates_enabled', 'version': version}))
+
+
+def stage_release(c, folder, version, public_key=None):
+    if platform.system() != 'Linux' or os.geteuid() != 0:
+        raise InstallError('Staging a managed release requires local Linux root')
+    root = Path(c['install_dir'])
+    with locked(c):
+        history = json.loads(regular(root / 'deployment.json'))
+        if history.get('pending') or not history.get('current'):
+            raise InstallError('Recover the installed agent before staging another release')
+        _, installed_key = update_profile(root)
+        if bool(installed_key) != bool(public_key) or \
+                installed_key and regular(installed_key, 16384) != regular(public_key, 16384):
+            raise InstallError('Imported release uses a different updater trust root')
+        manifest, publisher = _verify_release(folder, version, public_key)
+        if publisher != history['trust'] or manifest.get('managed_upgrades') is not True:
+            raise InstallError('Imported release differs from installed publisher or managed capability')
+        root.joinpath('bundles').mkdir(mode=0o700, exist_ok=True)
+        staged = signed_bundle(root, c, version, 'ed25519:' + publisher if public_key else publisher,
+                               public_key, Path(folder))
+        if regular(staged / 'release.json', 65536) != regular(Path(folder) / 'release.json', 65536):
+            raise InstallError('A different exact release is already staged on this host')
+    print(json.dumps({'result': 'staged', 'version': version}))
+
+
+def reconcile(c, timeout):
+    if platform.system() != 'Linux' or os.geteuid() != 0:
+        raise InstallError('The host updater requires local Linux root')
+    root = Path(c['install_dir'])
+    profile, key = update_profile(root)
+    with open(root / '.reconcile-lock', 'a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise InstallError('Another host reconciliation is running') from None
+        history = json.loads(regular(root / 'deployment.json'))
+        if history.get('pending'):
+            recover(c, timeout)
+            history = json.loads(regular(root / 'deployment.json'))
+        current = history.get('current')
+        if not current or not VERSION.fullmatch(current.get('version', '')):
+            raise InstallError('A signed installed baseline is required before reconciliation')
+        client, node_id = updater_client(c['state_dir'])
+        origin = profile['manager_url']
+        def heartbeat():
+            h = json.loads(regular(root / 'deployment.json'))
+            updater_request(client, origin, 'POST', '/v1/identity/software/heartbeat', {
+                'current_version': h['current']['version'],
+                'previous_version': (h.get('previous') or {}).get('version', ''),
+                'ready': not bool(h.get('pending'))})
+        heartbeat()
+        response = updater_request(client, origin, 'GET', '/v1/identity/software')
+        update = response.get('update')
+        if update is None:
+            print(json.dumps({'result': 'current', 'version': current['version']}))
+            return
+        if not isinstance(update, dict) or update.get('status') == 'needs_attention':
+            raise InstallError('Desired update needs operator attention')
+        if (update.get('node_id') != node_id or not re.fullmatch(r'[0-9a-f-]{36}', update.get('id', '')) or
+                update.get('action') not in ('upgrade', 'rollback') or
+                not VERSION.fullmatch(update.get('target_version', '')) or
+                not VERSION.fullmatch(update.get('expected_version', '')) or
+                not DIGEST.fullmatch(update.get('manifest_sha256', '')) or
+                not DIGEST.fullmatch(update.get('agent_sha256', '')) or
+                not re.fullmatch(r'[a-f0-9]{40}', update.get('target_revision', '')) or
+                update.get('platform') not in ('linux/amd64', 'linux/arm64') or
+                update.get('publisher') not in ('sigstore:' + REPOSITORY,
+                                               'ed25519:' + hashlib.sha256(regular(key, 16384)).hexdigest() if key else '')):
+            raise InstallError('Desired update is malformed or belongs to another host')
+        arch = {'aarch64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())
+        if update['platform'] != 'linux/' + str(arch):
+            raise InstallError('Desired release architecture does not match this host')
+        manager = response.get('manager_build')
+        if not isinstance(manager, dict) or manager.get('protocol') != 1 or not VERSION.fullmatch(manager.get('version', '')):
+            raise InstallError('Current manager compatibility evidence is missing')
+        version = update['target_version']
+        status = update['status']
+        path = '/v1/identity/software/' + update['id'] + '/status'
+        def advance(next_status, error_code=''):
+            nonlocal status
+            if status == next_status:
+                return
+            updater_request(client, origin, 'POST', path, {'status': next_status, 'error_code': error_code})
+            status = next_status
+        try:
+            bundle = signed_bundle(root, c, version, update['publisher'], key)
+            manifest, publisher = _verify_release(bundle, version, key)
+            expected_publisher = 'ed25519:' + publisher if key else publisher
+            if (manifest.get('managed_upgrades') is not True or
+                    expected_publisher != update['publisher'] or
+                    hashlib.sha256(regular(bundle / 'release.json', 65536)).hexdigest() != update['manifest_sha256'] or
+                    manifest['revision'] != update['target_revision'] or
+                    manifest['artifacts'].get('haproxy-agent-' + update['platform'].replace('/', '-')) != update['agent_sha256']):
+                raise InstallError('Verified release differs from the exact authorized target')
+            compatible_peer(manifest, 'manager', manager['version'])
+        except (InstallError, OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as error:
+            code = ('download_failed' if isinstance(error, urllib.error.URLError) else
+                    'peer_incompatible' if isinstance(error, InstallError) and 'Peer' in str(error) else
+                    'signature_invalid' if isinstance(error, InstallError) and 'signature' in str(error).lower() else
+                    'manifest_mismatch')
+            advance('needs_attention', code)
+            raise InstallError('Desired signed release could not pass host verification') from None
+        # Retained, already installed targets are completion retries after a
+        # manager outage. Never activate the same release twice.
+        if current['version'] == version:
+            if (current['revision'] != update['target_revision'] or
+                    current['artifacts'].get('haproxy-agent-' + update['platform'].replace('/', '-')) != update['agent_sha256']):
+                raise InstallError('Installed target differs from desired signed release')
+            activate_updater_script(root, bundle, manifest)
+            for next_status in ('preparing', 'activating', 'verifying'):
+                if status == 'queued' or status == 'preparing' and next_status != 'preparing' or status == 'activating' and next_status == 'verifying':
+                    advance(next_status)
+            heartbeat()
+            finish_software_update(client, origin, path, 'succeeded', '', timeout)
+            print(json.dumps({'result': 'succeeded', 'version': version}))
+            return
+        if current['version'] != update['expected_version']:
+            raise InstallError('Installed release changed since the update was authorized')
+        if history.get('last_result') == 'automatic_rollback' and status in ('preparing', 'activating', 'verifying'):
+            finish_software_update(client, origin, path, 'rolled_back', 'activation_failed', timeout)
+            return
+        try:
+            resource_preflight(c, root, bundle)
+            if status == 'queued':
+                advance('preparing')
+            if status == 'preparing':
+                advance('activating')
+            apply(c, bundle, version, key, update['action'], timeout)
+            history = json.loads(regular(root / 'deployment.json'))
+            if history['current'] != manifest:
+                raise InstallError('Activated release differs from verified target')
+            if status == 'activating':
+                advance('verifying')
+            activate_updater_script(root, bundle, manifest)
+            heartbeat()
+            finish_software_update(client, origin, path, 'succeeded', '', timeout)
+            print(json.dumps({'result': 'succeeded', 'version': version}))
+        except (InstallError, OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as error:
+            observed = json.loads(regular(root / 'deployment.json'))
+            if observed.get('current', {}).get('version') == version:
+                # The new agent is serving; management observation or reporting
+                # can be retried without another process change.
+                raise InstallError('Activated release awaits manager confirmation') from None
+            if observed.get('last_result') == 'automatic_rollback' and observed.get('current', {}).get('version') == update['expected_version']:
+                if status == 'queued':
+                    advance('preparing')
+                finish_software_update(client, origin, path, 'rolled_back', 'activation_failed', timeout)
+                print(json.dumps({'result': 'rolled_back', 'version': update['expected_version']}))
+                return
+            code = ('resource_unavailable' if isinstance(error, InstallError) and 'Insufficient' in str(error) else
+                    'peer_incompatible' if isinstance(error, InstallError) and 'Peer' in str(error) else
+                    'download_failed' if isinstance(error, urllib.error.URLError) else
+                    'signature_invalid' if isinstance(error, InstallError) and 'signature' in str(error).lower() else
+                    'activation_failed' if status in ('activating', 'verifying') else 'manifest_mismatch')
+            advance('needs_attention', code)
+            raise InstallError('Software update needs attention; signed release and previous state are retained') from None
+
+
+def activate_updater_script(root, bundle, manifest):
+    script = regular(bundle / 'agentctl.py', 1 << 20)
+    if hashlib.sha256(script).hexdigest() != manifest['artifacts'].get('agentctl.py'):
+        raise InstallError('Signed host updater script is missing or changed')
+    destination = root / 'updater/agentctl.py'
+    if destination.exists() and regular(destination, 1 << 20) == script:
+        return
+    fd, temporary = tempfile.mkstemp(prefix='.updater-', dir=destination.parent)
+    try:
+        with os.fdopen(fd, 'wb') as output:
+            os.fchmod(output.fileno(), 0o700)
+            output.write(script)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, destination)
+        parent = os.open(destination.parent, os.O_RDONLY)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def finish_software_update(client, origin, path, status, code, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            updater_request(client, origin, 'POST', path, {'status': status, 'error_code': code})
+            return
+        except InstallError as error:
+            if ' (409)' not in str(error):
+                raise
+        time.sleep(1)
+    raise InstallError('Manager has not observed fresh post-change agent discovery')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=['install', 'upgrade', 'rollback', 'recover', 'status', 'verify'])
+    p.add_argument('action', choices=['install', 'upgrade', 'rollback', 'recover', 'status', 'verify',
+                                      'enable-updates', 'stage-release', 'reconcile'])
     p.add_argument('--config', type=Path)
     p.add_argument('--release', type=Path, help='downloaded release directory; never executes remote scripts')
     p.add_argument('--version', help='exact version, including v prefix')
     p.add_argument('--public-key', type=Path, help='independently provisioned Ed25519 public key for offline signatures')
+    p.add_argument('--manager-url', help='fixed HTTPS manager origin for the external host updater')
     p.add_argument('--timeout', type=int, default=45)
     args = p.parse_args()
     if not 5 <= args.timeout <= 120:
@@ -488,7 +933,17 @@ def main():
         print(json.dumps(verify_release(args.release, args.version, args.public_key)))
         return
     c = config(args.config)
-    if args.action == 'status':
+    if args.action == 'enable-updates':
+        if not args.release or not args.version or not args.manager_url:
+            p.error('enable-updates requires --release, --version and --manager-url')
+        stage_updater(c, args.release, args.version, args.manager_url, args.public_key)
+    elif args.action == 'stage-release':
+        if not args.release or not args.version:
+            p.error('stage-release requires --release and --version')
+        stage_release(c, args.release, args.version, args.public_key)
+    elif args.action == 'reconcile':
+        reconcile(c, args.timeout)
+    elif args.action == 'status':
         v = json.loads(regular(Path(c['install_dir']) / 'deployment.json'))
         print(json.dumps({'version': (v.get('current') or {}).get('version'),
                           'previous_version': (v.get('previous') or {}).get('version'),
@@ -502,7 +957,7 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (InstallError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
+    except (InstallError, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired, urllib.error.URLError, ssl.SSLError) as error:
         # Validation errors never include subprocess command lines or secrets.
         print(f'agentctl: {error if isinstance(error, InstallError) else "invalid local configuration, release or runtime response"}', file=sys.stderr)
         sys.exit(1)

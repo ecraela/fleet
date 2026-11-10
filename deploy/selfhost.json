@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "database_schema": 20,
+  "database_schema": 21,
   "images": {
     "postgres": "postgres@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5",
     "metrics": "victoriametrics/victoria-metrics@sha256:c7884f32920dd45a9d86542a717227e63af03e060e53bbf8031e6e6fd0e1e05d",

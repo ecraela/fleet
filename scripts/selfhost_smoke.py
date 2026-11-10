@@ -121,7 +121,11 @@ def sign_fixture(folder, version, revision, image, signing):
         shutil.copyfile(ROOT / 'scripts' / name, folder / name)
     shutil.copyfile(ROOT / 'deploy/selfhost.json', folder / 'selfhost.json')
     manifest = {'schema': 1, 'repository': ctl.trust.REPOSITORY, 'version': version, 'revision': revision,
-                'protocol': 1, 'state_schema': 1, 'image': image,
+                'protocol': 1, 'state_schema': 1, 'image': image, 'managed_upgrades': True,
+                'compatibility': {
+                    'manager': {'min': VERSIONS[0], 'max': VERSIONS[-1]},
+                    'agent': {'min': VERSIONS[0], 'max': VERSIONS[-1]},
+                },
                 'artifacts': {p.name: ctl.sha(p) for p in folder.iterdir() if p.is_file()}}
     ctl.write(folder / 'release.json', json.dumps(manifest, sort_keys=True) + '\n')
     ctl.command(['openssl', 'pkeyutl', '-sign', '-inkey', signing, '-rawin',
@@ -153,7 +157,7 @@ def fixture_releases(work, base, reuse=False):
     else:
         revision = ctl.command(['git', '-C', ROOT, 'rev-parse', 'HEAD']).decode().strip()
     module = 'github.com/ecraela/fleet'
-    environment = dict(os.environ, CGO_ENABLED='0', GOOS='linux', GOARCH=arch,
+    environment = dict(os.environ, CGO_ENABLED='0', GOOS='linux',
                        GOMAXPROCS='2', GOMEMLIMIT='192MiB', GOFLAGS='-p=1')
     # Embedded UI must be present even when using a cached runtime base image.
     if not reuse:
@@ -181,10 +185,21 @@ func main() {
 }
 ''')
     result = []
+    other_arch = 'amd64' if arch == 'arm64' else 'arm64'
     for index, version in enumerate(VERSIONS):
         print('Building signed fixture ' + version, flush=True)
         folder = fixtures / version
         folder.mkdir(mode=0o700)
+        flags = f'-s -w -X {module}/internal/buildinfo.Version={version} -X {module}/internal/buildinfo.Revision={revision}'
+        def compile_arch(name, target_arch):
+            out = folder / f'haproxy-{name}-linux-{target_arch}'
+            package = str(broken) if index == 2 and name == 'manager' else './cmd/haproxy-' + name
+            process = subprocess.run(['go', 'build', '-trimpath', '-buildvcs=false', '-ldflags', flags,
+                                       '-o', str(out), package], cwd=ROOT,
+                                      env=dict(environment, GOARCH=target_arch),
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if process.returncode:
+                raise ctl.Error('Could not compile the local signed fixture binaries')
         if reuse:
             tag = 'ecraela-selfhost-fixture:' + version
             image = ctl.command(['docker', 'image', 'inspect', '--format', '{{.Id}}', tag]).decode().strip()
@@ -195,17 +210,13 @@ func main() {
                                  folder / f'haproxy-{name}-linux-{arch}'])
             finally:
                 ctl.command(['docker', 'rm', cid])
+            for name in ('manager', 'agent'):
+                compile_arch(name, other_arch)
             result.append(sign_fixture(folder, version, revision, image, signing))
             continue
-        flags = f'-s -w -X {module}/internal/buildinfo.Version={version} -X {module}/internal/buildinfo.Revision={revision}'
         for name in ('manager', 'agent'):
-            out = folder / f'haproxy-{name}-linux-{arch}'
-            package = str(broken) if index == 2 and name == 'manager' else './cmd/haproxy-' + name
-            process = subprocess.run(['go', 'build', '-trimpath', '-buildvcs=false', '-ldflags', flags,
-                                       '-o', str(out), package], cwd=ROOT, env=environment,
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if process.returncode:
-                raise ctl.Error('Could not compile the local signed fixture binaries')
+            compile_arch(name, arch)
+            compile_arch(name, other_arch)
         context = folder / 'image'
         context.mkdir(mode=0o700)
         for name in ('manager', 'agent'):

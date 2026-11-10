@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ecraela/fleet/internal/domain"
+	"github.com/ecraela/fleet/internal/software"
 )
 
 type memoryToken struct {
@@ -32,6 +33,15 @@ type auditEvent struct {
 // Memory provides the same atomic enrollment and tenant semantics as Postgres
 // for tests. Production startup must use the persistent store.
 type Memory struct {
+	softwareUpdates          map[string]software.Update
+	softwareRequests         map[string]string
+	softwareEvents           []software.Update
+	softwareUpdaters         map[string]software.Updater
+	installationUpdates      map[string]software.InstallationUpdate
+	installationRequests     map[string]string
+	installationEvents       []software.InstallationUpdate
+	installationUpdater      *software.Updater
+	installationUpdaterOrg   string
 	live                     map[string][]byte
 	connectors               map[string]domain.ConnectorLink
 	local                    *localMemoryState
@@ -62,9 +72,14 @@ var _ Store = (*Memory)(nil)
 
 func NewMemory() *Memory {
 	return &Memory{
-		clusters: make(map[string]domain.Cluster),
-		nodes:    make(map[string]domain.Node),
-		tokens:   make(map[string]memoryToken),
+		softwareUpdates:      make(map[string]software.Update),
+		softwareRequests:     make(map[string]string),
+		softwareUpdaters:     make(map[string]software.Updater),
+		installationUpdates:  make(map[string]software.InstallationUpdate),
+		installationRequests: make(map[string]string),
+		clusters:             make(map[string]domain.Cluster),
+		nodes:                make(map[string]domain.Node),
+		tokens:               make(map[string]memoryToken),
 	}
 }
 

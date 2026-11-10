@@ -13,8 +13,10 @@ check: web-check
 	$(GO) vet ./...
 	python3 -m py_compile scripts/hardening.py scripts/recovery.py scripts/test_recovery.py scripts/standalone.py scripts/connector.py
 	python3 -m py_compile scripts/agentctl.py scripts/release.py scripts/agent_releases.py scripts/test_agentctl.py
+	python3 -m py_compile scripts/test_release_compatibility.py
 	python3 -m py_compile scripts/verify_release_images.py scripts/linux_installer_smoke.py scripts/prepare_release_lab.py
 	python3 -m py_compile scripts/selfhostctl.py scripts/selfhost_smoke.py scripts/test_selfhostctl.py
+	python3 -m py_compile scripts/managed_upgrade_smoke.py
 	python3 -m py_compile scripts/onboarding.py
 	python3 -m py_compile scripts/geography.py scripts/pair.py scripts/requests.py scripts/traffic_rules.py
 	python3 -m py_compile scripts/lab.py scripts/test_lab.py
@@ -57,6 +59,10 @@ selfhost-acceptance:
 .PHONY: release-qualification
 release-qualification:
 	python3 scripts/selfhost_smoke.py $(HAPROXY_RELEASE_ARGS)
+
+.PHONY: managed-upgrade-acceptance
+managed-upgrade-acceptance:
+	python3 scripts/managed_upgrade_smoke.py $(HAPROXY_MANAGED_ARGS)
 
 build: web-build
 	mkdir -p .build.local

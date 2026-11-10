@@ -66,13 +66,117 @@ class SelfHosted(unittest.TestCase):
     def test_authenticates_installer_profile_and_every_storage_pin(self):
         folder, manifest, profile = self.signed()
         self.assertEqual(ctl.release(folder, manifest['version'], self.pub)[:2], (manifest, profile))
-        (folder / 'selfhost.json').write_text(json.dumps({**profile, 'database_schema': 21}))
+        (folder / 'selfhost.json').write_text(json.dumps({**profile, 'database_schema': 22}))
         with self.assertRaises(ctl.Error):
             ctl.release(folder, manifest['version'], self.pub)
+
+    def test_catalog_import_requires_a_signed_exact_release_and_is_visible_to_manager(self):
+        folder, manifest, profile = self.signed()
+        manifest['artifacts'].update({'haproxy-agent-linux-amd64': 'c' * 64,
+                                      'haproxy-agent-linux-arm64': 'd' * 64,
+                                      'haproxy-manager-linux-amd64': 'e' * 64,
+                                      'haproxy-manager-linux-arm64': 'f' * 64})
+        manifest['compatibility'] = {
+            'manager': {'min': 'v0.1.0', 'max': 'v0.1.0'},
+            'agent': {'min': 'v0.1.0', 'max': 'v0.1.0'}}
+        (folder / 'release.json').write_text(json.dumps(manifest))
+        ctl.command(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                     '-in', folder / 'release.json', '-out', folder / 'release.sig'])
+        root, config, _ = self.installation(manifest, profile)
+        args = SimpleNamespace(directory=root, release=folder, version=manifest['version'], public_key=self.pub)
+        ctl.add_release_catalog(args)
+        ctl.add_release_catalog(args)
+        catalog_path, catalog = ctl.ensure_release_catalog(root)
+        self.assertEqual(len(catalog['releases']), 1)
+        self.assertEqual(catalog['releases'][0]['manifest_sha256'], ctl.sha(folder / 'release.json'))
+        self.assertEqual(catalog_path.stat().st_mode & 0o022, 0)
+        compose = ctl.compose_spec(root, config, manifest, profile)['services']['manager']
+        self.assertIn(f'{root}/catalog:/run/catalog:ro', compose['volumes'])
+        self.assertEqual(compose['environment']['HAPROXY_RELEASE_CATALOG_FILE'], '/run/catalog/releases.json')
+        (folder / 'release.json').write_text('{"tampered":true}')
+        with self.assertRaises(ctl.Error):
+            ctl.add_release_catalog(args)
         folder, manifest, profile = self.signed('v0.1.1', {'schema': 1, 'database_schema': 19,
                     'images': {'postgres': 'postgres:latest', 'metrics': 'a', 'logs': 'b'}})
         with self.assertRaises(ctl.Error):
             ctl.release(folder, manifest['version'], self.pub)
+
+    def test_manager_reconcile_verifies_signed_cohort_before_switch(self):
+        baseline, old, profile = self.signed('v0.1.0')
+        old['artifacts'].update({'haproxy-manager-linux-amd64': '9' * 64,
+                                 'haproxy-manager-linux-arm64': '8' * 64})
+        (baseline / 'release.json').write_text(json.dumps(old))
+        ctl.command(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                     '-in', baseline / 'release.json', '-out', baseline / 'release.sig'])
+        candidate_dir, candidate, _ = self.signed('v0.1.1')
+        candidate['artifacts'].update({'haproxy-agent-linux-amd64': 'c' * 64,
+                                       'haproxy-agent-linux-arm64': 'd' * 64,
+                                       'haproxy-manager-linux-amd64': 'e' * 64,
+                                       'haproxy-manager-linux-arm64': 'f' * 64})
+        candidate['compatibility'] = {
+            'manager': {'min': 'v0.1.0', 'max': 'v0.1.1'},
+            'agent': {'min': 'v0.1.0', 'max': 'v0.1.1'}}
+        candidate['managed_upgrades'] = True
+        (candidate_dir / 'release.json').write_text(json.dumps(candidate))
+        ctl.command(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                     '-in', candidate_dir / 'release.json', '-out', candidate_dir / 'release.sig'])
+        root, c, history = self.installation(old, profile)
+        ctl.retain(root, ctl.release(baseline, old['version'], self.pub)[0])
+        ctl.retain(root, ctl.release(candidate_dir, candidate['version'], self.pub)[0])
+        (root / 'updater').mkdir()
+        ctl.trust.private_json(root / 'updater/profile.json', {'schema': 1,
+                 'manager_url': c['agent_manager_url'], 'public_key': str(self.pub)})
+        ctl.write(root / 'state/software-updater-token', 'secret-token-' * 4)
+        org = ctl.state_identity(root)['organization_id']
+        desired = {'id': str(ctl.uuid.uuid4()), 'organization_id': org, 'action': 'upgrade',
+                   'target_version': candidate['version'], 'expected_version': old['version'],
+                   'manifest_sha256': ctl.sha(candidate_dir / 'release.json'),
+                   'manager_sha256': 'e' * 64, 'target_revision': candidate['revision'],
+                   'platform': 'linux/amd64', 'publisher': 'ed25519:' + history['trust'],
+                   'status': 'queued'}
+        reported = []
+        response = {'update': desired, 'agent_versions': {str(ctl.uuid.uuid4()): 'v0.1.0'}}
+
+        def request(_, __, ___, ____, method, path, body=None):
+            if method == 'GET':
+                return response
+            if path.endswith('/status'):
+                reported.append((body['status'], body['error_code']))
+            return {}
+
+        def switch(args):
+            state = ctl.load(root / 'deployment.json')
+            state.update(current=candidate, previous=old, last_result='upgrade')
+            ctl.trust.private_json(root / 'deployment.json', state)
+
+        def ingest_build(*_args, **_kwargs):
+            state = ctl.load(root / 'deployment.json')
+            current = state['current']
+            return json.dumps({'version': current['version'], 'revision': current['revision'],
+                'platform': 'linux/amd64', 'executable_sha256': current['artifacts']['haproxy-manager-linux-amd64']}).encode()
+
+        args = SimpleNamespace(directory=root, timeout=60)
+        with patch.object(ctl.platform, 'system', return_value='Linux'), \
+                patch.object(ctl.os, 'geteuid', return_value=0), \
+                patch.object(ctl.platform, 'machine', return_value='x86_64'), \
+                patch.object(ctl, 'manager_resource_preflight'), \
+                patch.object(ctl, 'manager_updater_client', return_value=(object(), c['agent_manager_url'], 'secret-token-' * 4, org)), \
+                patch.object(ctl, 'manager_updater_request', side_effect=request), \
+                patch.object(ctl.Engine, 'compose', side_effect=ingest_build), \
+                patch.object(ctl, 'change', side_effect=switch) as change:
+            ctl.reconcile_manager(args)
+            change.assert_called_once()
+            self.assertEqual([status for status, _ in reported], ['preparing', 'activating', 'verifying', 'succeeded'])
+            self.assertEqual((root / 'updater/current').resolve(), root / 'releases/v0.1.1')
+            reported.clear()
+            state = ctl.load(root / 'deployment.json')
+            state.update(current=old, previous=None, last_result='installed')
+            ctl.trust.private_json(root / 'deployment.json', state)
+            (root / 'releases/v0.1.1/release.json').write_text('{"tampered":true}')
+            with self.assertRaisesRegex(ctl.Error, 'did not pass host verification'):
+                ctl.reconcile_manager(args)
+            self.assertEqual(reported, [('needs_attention', 'manifest_mismatch')])
+            self.assertEqual(change.call_count, 1)
 
     def test_legal_files_are_authenticated_and_retained_for_recovery(self):
         folder, manifest, _ = self.signed()
@@ -260,7 +364,7 @@ class SelfHosted(unittest.TestCase):
     def test_storage_changes_cannot_silently_downgrade_database_or_storage(self):
         _, _, profile = self.signed()
         for candidate in ({**profile, 'database_schema': 18},
-                          {**profile, 'database_schema': 21},
+                          {**profile, 'database_schema': 22},
                           {**profile, 'images': {**profile['images'], 'postgres': 'other'}}):
             with self.assertRaises(ctl.Error):
                 ctl.compatible(profile, candidate)
@@ -268,10 +372,13 @@ class SelfHosted(unittest.TestCase):
     def test_only_the_known_additive_database_change_preserves_storage_compatibility(self):
         _, _, current = self.signed()
         baseline = {**current, 'database_schema': 19}
+        intermediate = {**current, 'database_schema': 20}
         ctl.compatible(baseline, current)
         ctl.compatible(current, baseline)
+        ctl.compatible(intermediate, current)
+        ctl.compatible(current, intermediate)
         self.assertEqual(baseline['database_schema'], 19)
-        self.assertEqual(current['database_schema'], 20)
+        self.assertEqual(current['database_schema'], 21)
         with self.assertRaises(ctl.Error):
             ctl.compatible(current, {**current, 'unknown_storage_setting': True})
 
@@ -279,8 +386,9 @@ class SelfHosted(unittest.TestCase):
         _, manifest, profile = self.signed()
         root, c, _ = self.installation(manifest, profile)
         engine = ctl.Engine(root, c)
-        for expected, actual, valid in ((19, 19, True), (20, 20, True), (19, 20, True),
-                                        (20, 19, False), (19, 21, False), (20, 21, False)):
+        for expected, actual, valid in ((19, 19, True), (20, 20, True), (21, 21, True),
+                                        (19, 20, True), (19, 21, True), (20, 21, True),
+                                        (20, 19, False), (21, 20, False), (19, 22, False)):
             with self.subTest(expected=expected, actual=actual), \
                     patch.object(engine, 'sql'), \
                     patch.object(engine, 'compose', side_effect=[b'', b'', f'{actual}\n'.encode()]):
@@ -317,7 +425,7 @@ class SelfHosted(unittest.TestCase):
                 self.assertEqual(after['current'], manifest)
                 self.assertEqual(after['identity'], initial['identity'])
                 self.assertIsNone(after['pending'])
-        self.assertEqual(Engine.migrations, [20, 19])
+        self.assertEqual(Engine.migrations, [21, 19])
 
     def test_acceptance_refuses_small_or_shared_engines_before_creating_a_lab(self):
         for info in ({'MemTotal': 2 << 30, 'ContainersRunning': 0},

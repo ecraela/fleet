@@ -19,6 +19,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path, PurePosixPath
+import platform
 import re
 import secrets
 import shutil
@@ -29,11 +30,13 @@ import tarfile
 import tempfile
 import time
 import urllib.parse
+import urllib.error
+import urllib.request
 import uuid
 import types
 
 
-AGENTCTL_SHA256 = '01e3f37fc1e56fed24e8c32cfe7899dbcfa98f6e9fe52e79977e2dfda1c99d11'
+AGENTCTL_SHA256 = '82d6792c864f2d6a0f2b92be1acd7f9497a03264cf8083f0e24a55c4722c17e0'
 
 
 def load_agentctl():
@@ -88,6 +91,125 @@ def write(path, data):
 
 def load(path):
     return json.loads(trust.regular(path, 1 << 20))
+
+
+def ensure_release_catalog(root):
+    directory = root / 'catalog'
+    if not directory.exists():
+        directory.mkdir(mode=0o755)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022:
+        raise Error('Release catalog directory must be a non-writable directory')
+    path = directory / 'releases.json'
+    if not path.exists():
+        write(path, '{"schema":1,"releases":[]}\n')
+        path.chmod(0o644)
+    raw = trust.regular(path, 128 << 10)
+    if path.stat().st_mode & 0o022:
+        raise Error('Release catalog must not be group/world writable')
+    value = json.loads(raw)
+    if (not isinstance(value, dict) or set(value) != {'schema', 'releases'} or
+            value['schema'] != 1 or not isinstance(value['releases'], list) or len(value['releases']) > 50):
+        raise Error('Invalid release catalog')
+    return path, value
+
+
+def add_release_catalog(args):
+    root = private_directory(args.directory)
+    # Only the exact signed manifest is a candidate. A URL or mutable tag never
+    # enters the manager's catalog; the node re-verifies the whole bundle.
+    manifest, publisher = trust._verify_release(args.release, args.version, args.public_key)
+    if 'compatibility' not in manifest:
+        raise Error('A signed compatibility range is required for managed upgrades')
+    platforms = ('linux/amd64', 'linux/arm64')
+    artifacts = manifest['artifacts']
+    agent_digests = {platform: artifacts.get('haproxy-agent-' + platform.replace('/', '-')) for platform in platforms}
+    manager_digests = {platform: artifacts.get('haproxy-manager-' + platform.replace('/', '-')) for platform in platforms}
+    if any(not isinstance(value, str) or not trust.DIGEST.fullmatch(value) for value in (*agent_digests.values(), *manager_digests.values())):
+        raise Error('Signed manager and agent artifacts for both Linux architectures are required')
+    raw = trust.regular(args.release / 'release.json', 65536)
+    entry = {'version': manifest['version'], 'revision': manifest['revision'],
+             'manifest_sha256': hashlib.sha256(raw).hexdigest(),
+             'publisher': 'ed25519:' + publisher if args.public_key else publisher,
+             'image': manifest['image'], 'protocol': manifest['protocol'],
+             'state_schema': manifest['state_schema'], 'platforms': list(platforms),
+             'agent_digests': agent_digests, 'manager_digests': manager_digests,
+             'compatibility': manifest['compatibility'],
+             'managed_upgrades': manifest.get('managed_upgrades') is True}
+    # Keep a host-owned offline bundle when a full signed release was imported.
+    # The live manager only receives metadata through its read-only catalog.
+    candidate = None
+    if args.public_key or (args.release / 'selfhost.json').exists():
+        candidate, _, candidate_publisher = release(args.release, args.version, args.public_key)
+        if candidate_publisher != publisher or candidate != manifest:
+            raise Error('Imported release changed during verification')
+    with locked(root):
+        if candidate is not None:
+            retain(root, candidate)
+        path, catalog = ensure_release_catalog(root)
+        current = next((item for item in catalog['releases'] if item.get('version') == args.version), None)
+        if current is not None:
+            if current != entry:
+                raise Error('An existing exact release differs from this signed manifest')
+            print(json.dumps({'result': 'already_cataloged', 'version': args.version}))
+            return
+        if len(catalog['releases']) >= 50:
+            raise Error('Release catalog is full')
+        catalog['releases'].append(entry)
+        fd, temporary = tempfile.mkstemp(prefix='.catalog-', dir=path.parent)
+        try:
+            with os.fdopen(fd, 'w') as output:
+                os.fchmod(output.fileno(), 0o644)
+                json.dump(catalog, output, sort_keys=True, separators=(',', ':'))
+                output.write('\n')
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, path)
+            parent = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(parent)
+            finally:
+                os.close(parent)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    print(json.dumps({'result': 'cataloged', 'version': args.version}))
+
+
+def sync_release_catalog(args):
+    root = private_directory(args.directory)
+    _, catalog = ensure_release_catalog(root)
+    known = {item['version'] for item in catalog['releases']}
+    request = urllib.request.Request('https://api.github.com/repos/ecraela/fleet/releases?per_page=20',
+                                     headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'ecraela-fleet-catalog/1'})
+    opener = urllib.request.build_opener(trust.NoRedirect())
+    with opener.open(request, timeout=20) as response:
+        raw = response.read((1 << 20) + 1)
+    if len(raw) > 1 << 20:
+        raise Error('Public release feed exceeds the catalog limit')
+    entries = json.loads(raw)
+    if not isinstance(entries, list) or len(entries) > 20:
+        raise Error('Invalid public release feed')
+    added, rejected = [], []
+    for item in entries:
+        if not isinstance(item, dict) or item.get('draft') or not item.get('published_at'):
+            continue
+        version = item.get('tag_name')
+        if not isinstance(version, str) or not trust.VERSION.fullmatch(version) or version in known:
+            continue
+        with tempfile.TemporaryDirectory(prefix='fleet-catalog-sync-') as directory:
+            folder = Path(directory)
+            for name, maximum in (('release.json', 65536), ('release.sigstore.json', 1 << 20)):
+                (folder / name).write_bytes(trust.release_asset(version, name, maximum))
+            candidate = argparse.Namespace(directory=args.directory, release=folder, version=version, public_key=None)
+            try:
+                add_release_catalog(candidate)
+            except (Error, trust.InstallError):
+                rejected.append(version)
+                continue
+            known.add(version)
+            added.append(version)
+    print(json.dumps({'result': 'catalog_synced', 'added': added, 'rejected': rejected}))
 
 
 def sha(path):
@@ -168,7 +290,7 @@ def release(folder, version, key=None):
     profile = json.loads(files['selfhost.json'])
     repositories = {'postgres': 'postgres', 'metrics': 'victoriametrics/victoria-metrics',
                     'logs': 'victoriametrics/victoria-logs'}
-    if (profile.get('schema') != 1 or profile.get('database_schema') not in (19, 20) or
+    if (profile.get('schema') != 1 or profile.get('database_schema') not in (19, 20, 21) or
             set(profile.get('images', {})) != set(repositories)):
         raise Error('Unsupported self-hosted storage or database schema')
     for name, repository in repositories.items():
@@ -247,6 +369,7 @@ def state_identity(root):
 
 
 def compose_spec(root, c, manifest, profile):
+    ensure_release_catalog(root)
     state = root / 'state'
     organization = trust.regular(state / 'organization-id', 128).decode().strip()
     password = trust.regular(state / 'database-password', 128).decode().strip()
@@ -273,7 +396,15 @@ def compose_spec(root, c, manifest, profile):
             'HAPROXY_AGENT_RELEASE_URL': f"https://github.com/{trust.REPOSITORY}/releases/download/{manifest['version']}"})
     manager['command'] = ['serve', '--role', 'manager', '--listen', ':8443', '--pki-dir', '/pki',
                           '--admin-token-file', '/run/secrets/operator', '--metrics-url', 'http://metrics:8428']
-    manager['volumes'] = [f'{state}/pki:/pki:ro', f'{state}/admin-token:/run/secrets/operator:ro']
+    manager['volumes'] = [f'{state}/pki:/pki:ro', f'{state}/admin-token:/run/secrets/operator:ro',
+                          f'{root}/catalog:/run/catalog:ro']
+    manager['environment']['HAPROXY_RELEASE_CATALOG_FILE'] = '/run/catalog/releases.json'
+    if (state / 'software-updater-token').exists():
+        token = trust.regular(state / 'software-updater-token', 512)
+        if not 32 <= len(token.strip()) <= 256:
+            raise Error('Host updater credential is invalid')
+        manager['environment']['HAPROXY_SOFTWARE_HOST_TOKEN_FILE'] = '/run/secrets/software-updater-token'
+        manager['volumes'].append(f'{state}/software-updater-token:/run/secrets/software-updater-token:ro')
     if c.get('connector_relay_url'):
         manager['environment'].update({
             'HAPROXY_CONNECTOR_RELAY_URL': c['connector_relay_url'],
@@ -408,9 +539,8 @@ class Engine:
         version = self.compose('exec', '-T', 'postgres', 'psql', '-U', 'hm_owner',
                                '-d', 'haproxy_manager', '-Atc',
                                'SELECT max(version) FROM hm_schema_migrations;').decode().strip()
-        # Schema 20 only adds latest-observation storage. A schema-19 binary
-        # can run against it during software rollback; never remove that table.
-        if version != str(profile['database_schema']) and not (profile['database_schema'] == 19 and version == '20'):
+        # Additive schemas may remain when rolling a manager binary back.
+        if version != str(profile['database_schema']) and not (int(version) <= 21 and int(version) >= profile['database_schema']):
             raise Error('The running database schema differs from this supported release profile')
 
     def sql(self, sql):
@@ -462,6 +592,13 @@ class Engine:
                                                      '/usr/local/bin/haproxy-manager', 'version'))
                     if actual['version'] != manifest['version'] or actual['revision'] != manifest['revision']:
                         raise Error('Running manager version differs from the selected release')
+                    ingest_build = json.loads(self.compose('exec', '-T', 'ingest',
+                                                           '/usr/local/bin/haproxy-manager', 'version'))
+                    if (ingest_build.get('version') != manifest['version'] or
+                            ingest_build.get('revision') != manifest['revision'] or
+                            ingest_build.get('executable_sha256') !=
+                            manifest['artifacts'].get('haproxy-manager-' + ingest_build.get('platform', '').replace('/', '-'))):
+                        raise Error('Running ingest version differs from the selected release')
                     return
             except (Error, ValueError, KeyError):
                 pass
@@ -499,9 +636,10 @@ def install(args):
         engine.initialize(manifest)
         write(state / 'database-password', secrets.token_hex(32) + '\n')
         write(state / 'database-runtime-password', secrets.token_hex(32) + '\n')
+        write(state / 'software-updater-token', secrets.token_urlsafe(48) + '\n')
         write(state / 'bootstrap.password', password)
         if os.geteuid() == 0:
-            for name in ('database-password', 'database-runtime-password', 'bootstrap.password'):
+            for name in ('database-password', 'database-runtime-password', 'software-updater-token', 'bootstrap.password'):
                 os.chown(state / name, uid, gid)
         history = {'schema': 1, 'trust': publisher, 'current': None, 'previous': None,
                    'pending': {'action': 'install', 'release': manifest, 'profile': profile,
@@ -591,9 +729,335 @@ def complete_install(root, engine, history):
 
 
 def compatible(old, candidate):
-    if (old.get('database_schema') not in (19, 20) or candidate.get('database_schema') not in (19, 20) or
-            {**old, 'database_schema': 20} != {**candidate, 'database_schema': 20}):
+    if (old.get('database_schema') not in (19, 20, 21) or candidate.get('database_schema') not in (19, 20, 21) or
+            {**old, 'database_schema': 21} != {**candidate, 'database_schema': 21}):
         raise Error('This release changes storage pins/schema; a separately qualified migration is required')
+
+
+def manager_update_origin(c):
+    # The host is not necessarily on the agents' Docker DNS network.
+    # Prefer the manager's loopback listener when it is published locally.
+    if c['bind_address'] in ('127.0.0.1', '0.0.0.0'):
+        return trust.update_origin(f"https://localhost:{c['manager_port']}")
+    return trust.update_origin(c['agent_manager_url'])
+
+
+def manager_updater_client(root, c):
+    manager_url = manager_update_origin(c)
+    ca = trust.regular(root / 'state/pki/ca.crt', 128 << 10).decode()
+    token = trust.regular(root / 'state/software-updater-token', 512).decode().strip()
+    organization = trust.regular(root / 'state/organization-id', 128).decode().strip()
+    uuid.UUID(organization)
+    if not 32 <= len(token) <= 256:
+        raise Error('Host updater credential is invalid')
+    context = ssl.create_default_context(cadata=ca)
+    client = urllib.request.build_opener(urllib.request.ProxyHandler({}),
+                                          urllib.request.HTTPSHandler(context=context), trust.NoRedirect())
+    return client, manager_url, token, organization
+
+
+def manager_updater_request(client, manager_url, token, organization, method, path, body=None):
+    payload = None if body is None else json.dumps(body, separators=(',', ':')).encode()
+    request = urllib.request.Request(manager_url + path, data=payload, method=method,
+                                     headers={'Authorization': 'Bearer ' + token,
+                                              'X-Organization-ID': organization,
+                                              'Content-Type': 'application/json', 'Accept': 'application/json'})
+    try:
+        with client.open(request, timeout=10) as response:
+            if response.status != 200:
+                raise Error('Manager rejected host updater request')
+            raw = response.read((128 << 10) + 1)
+    except urllib.error.HTTPError as failure:
+        raise Error(f'Manager rejected host updater request ({failure.code})') from None
+    if len(raw) > 128 << 10:
+        raise Error('Manager host updater response exceeds limit')
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise Error('Invalid manager host updater response')
+    return value
+
+
+def manager_bundle(root, version, publisher, key):
+    retained = root / 'releases' / version
+    if retained.is_dir():
+        candidate, profile, trust_root = release(retained, version, key)
+        if ('ed25519:' + trust_root if key else trust_root) != publisher:
+            raise Error('Retained release publisher differs from desired state')
+        return retained, candidate, profile
+    if key:
+        raise Error('Offline signed release must be imported on the host before selection')
+    bundles = root / 'updater/bundles'
+    bundles.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination = bundles / version
+    if not destination.exists():
+        stage = Path(tempfile.mkdtemp(prefix='.manager-bundle-', dir=bundles))
+        try:
+            for name, maximum in (('release.json', 65536), ('release.sigstore.json', 1 << 20)):
+                write(stage / name, trust.release_asset(version, name, maximum))
+            verified, trust_root = trust._verify_release(stage, version)
+            if trust_root != publisher:
+                raise Error('Signed publisher differs from desired state')
+            names = ['selfhost.json', 'selfhostctl.py', 'agentctl.py']
+            names += [name for name in trust.LEGAL_ARTIFACTS if name in verified['artifacts']]
+            for name in names:
+                maximum = trust.MAX_BINARY if name in trust.LEGAL_ARTIFACTS else 1 << 20
+                write(stage / name, trust.release_asset(version, name, maximum))
+            release(stage, version)
+            os.replace(stage, destination)
+        finally:
+            if stage.exists():
+                shutil.rmtree(stage)
+    candidate, profile, trust_root = release(destination, version)
+    if trust_root != publisher:
+        raise Error('Downloaded release publisher differs from desired state')
+    return destination, candidate, profile
+
+
+def manager_resource_preflight(root):
+    if shutil.disk_usage(root).free < 1 << 30:
+        raise Error('Insufficient local disk space for signed images and rollback')
+    try:
+        available = next(int(line.split()[1]) * 1024 for line in Path('/proc/meminfo').read_text().splitlines()
+                         if line.startswith('MemAvailable:'))
+    except (OSError, StopIteration, ValueError, IndexError):
+        raise Error('Available memory cannot be checked') from None
+    if available < 256 << 20:
+        raise Error('Insufficient available memory for manager upgrade')
+
+
+def manager_updater_symlink(root, version):
+    if not trust.VERSION.fullmatch(version):
+        raise Error('Invalid installed updater version')
+    release_dir = root / 'releases' / version
+    if not release_dir.is_dir():
+        raise Error('The installed signed release is not retained')
+    updater = root / 'updater'
+    updater.mkdir(mode=0o700, exist_ok=True)
+    destination = updater / 'current'
+    temporary = updater / ('.current-' + secrets.token_hex(8))
+    os.symlink(release_dir, temporary)
+    try:
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def enable_manager_updates(args):
+    if platform.system() != 'Linux' or os.geteuid() != 0:
+        raise Error('Manager updates require a local Linux root and systemd')
+    root = private_directory(args.directory)
+    with locked(root):
+        c, history = configuration(root), load(root / 'deployment.json')
+        current = history.get('current')
+        if not current or history.get('pending') or history.get('restored_stopped'):
+            raise Error('A healthy signed installation is required before enabling updates')
+        key = args.public_key
+        signed, _, publisher = release(root / 'releases' / current['version'], current['version'], key)
+        if signed != current or publisher != history['trust'] or signed.get('managed_upgrades') is not True:
+            raise Error('Current signed release or publisher trust is not qualified for updates')
+        manager_resource_preflight(root)
+        token_file = root / 'state/software-updater-token'
+        created = not token_file.exists()
+        if created:
+            write(token_file, secrets.token_urlsafe(48) + '\n')
+            os.chown(token_file, c['uid'], c['gid'])
+            engine = Engine(root, c)
+            engine.render(signed, history['profile'])
+            engine.switch()
+            engine.healthy(signed, args.timeout)
+        else:
+            trust.regular(token_file, 512)
+        manager_updater_symlink(root, current['version'])
+        profile = {'schema': 1, 'manager_url': manager_update_origin(c),
+                   'public_key': str(key.resolve()) if key else ''}
+        trust.private_json(root / 'updater/profile.json', profile)
+        python = shutil.which('python3')
+        if not python or not Path(python).is_absolute():
+            raise Error('An absolute Python 3 executable is required')
+        if any(re.search(r'[\s%"\\]', value) for value in (str(root), python)):
+            raise Error('Updater paths must be literal systemd paths')
+        script = root / 'updater/current/selfhostctl.py'
+        command_line = ' '.join(json.dumps(str(value)) for value in (python, '-I', script, 'manager-reconcile', '--directory', root))
+        sync_line = ' '.join(json.dumps(str(value)) for value in (python, '-I', script, 'catalog-sync', '--directory', root))
+        units = {
+            'ecraela-fleet-manager-updater.service': '[Unit]\nDescription=Reconcile signed Fleet manager release\nAfter=network-online.target docker.service\nWants=network-online.target\n[Service]\nType=oneshot\nTimeoutStartSec=15min\nExecStart=' + command_line + '\n',
+            'ecraela-fleet-manager-updater.timer': '[Unit]\nDescription=Check desired Fleet manager release\n[Timer]\nOnBootSec=40s\nOnUnitInactiveSec=30s\nRandomizedDelaySec=5s\nPersistent=true\n[Install]\nWantedBy=timers.target\n',
+            'ecraela-fleet-catalog-sync.service': '[Unit]\nDescription=Verify new Fleet releases\nAfter=network-online.target\nWants=network-online.target\n[Service]\nType=oneshot\nExecStart=' + sync_line + '\n',
+            'ecraela-fleet-catalog-sync.timer': '[Unit]\nDescription=Refresh verified Fleet release catalog\n[Timer]\nOnBootSec=2m\nOnUnitInactiveSec=1h\nRandomizedDelaySec=5m\nPersistent=true\n[Install]\nWantedBy=timers.target\n'}
+        for name, content in units.items():
+            path = root / 'updater' / name
+            if path.exists() and path.is_symlink():
+                raise Error('Updater systemd unit must not be a symlink')
+            path.write_text(content)
+            path.chmod(0o644)
+        command(['systemctl', 'link', *(root / 'updater' / name for name in units)])
+        command(['systemctl', 'daemon-reload'])
+        command(['systemctl', 'enable', '--now', 'ecraela-fleet-manager-updater.timer', 'ecraela-fleet-catalog-sync.timer'])
+    print(json.dumps({'result': 'manager_updates_enabled', 'version': current['version'],
+                      'management_restarted': created}))
+
+
+def reconcile_manager(args):
+    if platform.system() != 'Linux' or os.geteuid() != 0:
+        raise Error('The manager updater requires local Linux root')
+    root = private_directory(args.directory)
+    profile = load(root / 'updater/profile.json')
+    if not isinstance(profile, dict) or set(profile) != {'schema', 'manager_url', 'public_key'} or profile['schema'] != 1:
+        raise Error('Invalid manager updater profile')
+    c = configuration(root)
+    if trust.update_origin(profile['manager_url']) != manager_update_origin(c):
+        raise Error('Host updater destination differs from the installation')
+    key = Path(profile['public_key']) if profile['public_key'] else None
+    if key:
+        trust.regular(key, 16384)
+    fd = os.open(root / '.manager-reconcile-lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Error('Another manager reconciliation is running') from None
+        history = load(root / 'deployment.json')
+        if history.get('pending'):
+            recover(args)
+            history = load(root / 'deployment.json')
+        current = history.get('current')
+        if not current or not trust.VERSION.fullmatch(current.get('version', '')):
+            raise Error('A signed installed manager baseline is required')
+        client, manager_url, token, organization = manager_updater_client(root, c)
+
+        def request(method, path, body=None):
+            return manager_updater_request(client, manager_url, token, organization, method, path, body)
+
+        def heartbeat():
+            state = load(root / 'deployment.json')
+            ingest_version = ''
+            ready = not bool(state.get('pending'))
+            try:
+                ingest = json.loads(Engine(root, c).compose('exec', '-T', 'ingest',
+                                   '/usr/local/bin/haproxy-manager', 'version'))
+                expected = state['current']['artifacts'].get('haproxy-manager-' + ingest.get('platform', '').replace('/', '-'))
+                if expected and ingest.get('version') == state['current']['version'] and \
+                        ingest.get('revision') == state['current']['revision'] and \
+                        ingest.get('executable_sha256') == expected:
+                    ingest_version = ingest['version']
+                else:
+                    ready = False
+            except (Error, ValueError, KeyError, TypeError):
+                ready = False
+            request('POST', '/v1/host/software/heartbeat', {
+                'current_version': state['current']['version'],
+                'ingest_version': ingest_version,
+                'previous_version': (state.get('previous') or {}).get('version', ''),
+                'ready': ready})
+
+        heartbeat()
+        response = request('GET', '/v1/host/software')
+        update = response.get('update')
+        if update is None:
+            print(json.dumps({'result': 'current', 'version': current['version']}))
+            return
+        if not isinstance(update, dict) or update.get('organization_id') != organization or \
+                not re.fullmatch(r'[0-9a-f-]{36}', update.get('id', '')) or \
+                update.get('action') not in ('upgrade', 'rollback') or \
+                not trust.VERSION.fullmatch(update.get('target_version', '')) or \
+                not trust.VERSION.fullmatch(update.get('expected_version', '')) or \
+                not trust.DIGEST.fullmatch(update.get('manifest_sha256', '')) or \
+                not trust.DIGEST.fullmatch(update.get('manager_sha256', '')) or \
+                not re.fullmatch(r'[a-f0-9]{40}', update.get('target_revision', '')) or \
+                update.get('platform') not in ('linux/amd64', 'linux/arm64'):
+            raise Error('Desired manager update is malformed or belongs to another installation')
+        if update['platform'] != 'linux/' + str({'aarch64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())):
+            raise Error('Desired manager release architecture differs from this host')
+        expected_publisher = 'ed25519:' + hashlib.sha256(trust.regular(key, 16384)).hexdigest() if key else 'sigstore:' + trust.REPOSITORY
+        if update.get('publisher') != expected_publisher or history['trust'] != expected_publisher.removeprefix('ed25519:'):
+            raise Error('Desired manager publisher differs from installed trust')
+        status = update.get('status')
+        if status == 'needs_attention':
+            if history.get('last_result') == 'recovered':
+                request('POST', '/v1/host/software/' + update['id'] + '/status',
+                        {'status': 'recovered', 'error_code': ''})
+                return
+            raise Error('Desired manager update needs host recovery')
+        if status not in ('queued', 'preparing', 'activating', 'verifying'):
+            raise Error('Desired manager update has an invalid active status')
+        path = '/v1/host/software/' + update['id'] + '/status'
+
+        def advance(next_status, error_code=''):
+            nonlocal status
+            if status != next_status:
+                request('POST', path, {'status': next_status, 'error_code': error_code})
+                status = next_status
+
+        if current['version'] == update['target_version']:
+            if current['revision'] != update['target_revision'] or \
+                    current['artifacts'].get('haproxy-manager-' + update['platform'].replace('/', '-')) != update['manager_sha256']:
+                raise Error('Installed manager differs from authorized signed release')
+            if status == 'queued':
+                advance('preparing')
+            if status == 'preparing':
+                advance('activating')
+            if status == 'activating':
+                advance('verifying')
+            manager_updater_symlink(root, current['version'])
+            heartbeat()
+            advance('succeeded')
+            print(json.dumps({'result': 'succeeded', 'version': current['version']}))
+            return
+        if current['version'] != update['expected_version']:
+            raise Error('Installed manager changed since the update was authorized')
+        if history.get('last_result') in ('automatic_rollback', 'recovered') and status in ('preparing', 'activating', 'verifying'):
+            advance('rolled_back', 'activation_failed')
+            print(json.dumps({'result': 'rolled_back', 'version': current['version']}))
+            return
+        try:
+            bundle, candidate, candidate_profile = manager_bundle(root, update['target_version'], update['publisher'], key)
+            if candidate.get('managed_upgrades') is not True:
+                raise Error('Target manager does not support managed upgrade reporting')
+            if hashlib.sha256(trust.regular(bundle / 'release.json', 65536)).hexdigest() != update['manifest_sha256'] or \
+                    candidate['revision'] != update['target_revision'] or \
+                    candidate['artifacts'].get('haproxy-manager-' + update['platform'].replace('/', '-')) != update['manager_sha256']:
+                raise Error('Verified manager release differs from exact desired target')
+            compatible(history['profile'], candidate_profile)
+            versions = response.get('agent_versions')
+            if not isinstance(versions, dict) or len(versions) > 5000:
+                raise Error('Fresh agent cohort evidence is missing')
+            for node_id, version in versions.items():
+                uuid.UUID(node_id)
+                trust.compatible_peer(candidate, 'agent', version)
+            manager_resource_preflight(root)
+        except (Error, OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as failure:
+            code = ('resource_unavailable' if isinstance(failure, Error) and 'Insufficient' in str(failure) else
+                    'peer_incompatible' if isinstance(failure, Error) and 'Peer' in str(failure) else
+                    'download_failed' if isinstance(failure, urllib.error.URLError) else
+                    'signature_invalid' if isinstance(failure, Error) and 'signature' in str(failure).lower() else
+                    'manifest_mismatch')
+            advance('needs_attention', code)
+            raise Error('Manager update did not pass host verification') from None
+        try:
+            if status == 'queued':
+                advance('preparing')
+            if status == 'preparing':
+                advance('activating')
+            change(argparse.Namespace(action=update['action'], directory=root, release=bundle,
+                                      version=update['target_version'], public_key=key, timeout=args.timeout))
+            now = load(root / 'deployment.json')
+            if now['current'] != candidate:
+                raise Error('Activated manager release differs from verified target')
+            manager_updater_symlink(root, update['target_version'])
+            advance('verifying')
+            heartbeat()
+            advance('succeeded')
+            print(json.dumps({'result': 'succeeded', 'version': update['target_version']}))
+        except (Error, OSError, ValueError, KeyError, TypeError, urllib.error.URLError):
+            observed = load(root / 'deployment.json')
+            if observed.get('current', {}).get('version') == update['target_version']:
+                raise Error('Activated manager awaits status confirmation') from None
+            if observed.get('last_result') == 'automatic_rollback' and observed.get('current', {}).get('version') == update['expected_version']:
+                advance('rolled_back', 'activation_failed')
+                print(json.dumps({'result': 'rolled_back', 'version': update['expected_version']}))
+                return
+            advance('needs_attention', 'activation_failed')
+            raise Error('Manager update needs attention; retained release and prior state were preserved') from None
 
 
 def change(args):
@@ -1037,7 +1501,8 @@ def node_restore(args):
 def main():
     global ERROR_LOG
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=('install', 'upgrade', 'rollback', 'recover', 'status', 'stop',
+    p.add_argument('action', choices=('install', 'upgrade', 'rollback', 'recover', 'status', 'stop', 'catalog-add', 'catalog-sync',
+                                      'manager-enable-updates', 'manager-reconcile',
                                       'backup', 'restore', 'activate', 'node-backup', 'node-restore', 'verify',
                                       'connector-configure'))
     p.add_argument('--directory', type=Path, help='private installation/new restore directory')
@@ -1071,11 +1536,14 @@ def main():
         'upgrade': ('directory', 'release', 'version'), 'rollback': ('directory', 'release', 'version'),
         'verify': ('release', 'version'), 'recover': ('directory',), 'status': ('directory',),
         'stop': ('directory',), 'activate': ('directory',),
+        'manager-enable-updates': ('directory',), 'manager-reconcile': ('directory',),
         'backup': ('directory', 'backup', 'recipient', 'signing_key'),
         'restore': ('directory', 'backup', 'identity_file', 'backup_public_key'),
         'node-backup': ('node_config', 'backup', 'recipient', 'signing_key'),
         'node-restore': ('directory', 'backup', 'identity_file', 'backup_public_key'),
         'connector-configure': ('directory', 'connector_relay_url')}
+    required['catalog-add'] = ('directory', 'release', 'version')
+    required['catalog-sync'] = ('directory',)
     if any(getattr(args, key) is None for key in required[args.action]):
         p.error('required options: ' + ', '.join('--' + key.replace('_', '-') for key in required[args.action]))
     if args.directory:
@@ -1094,6 +1562,14 @@ def main():
         recover(args)
     elif args.action == 'connector-configure':
         configure_connector(args)
+    elif args.action == 'catalog-add':
+        add_release_catalog(args)
+    elif args.action == 'catalog-sync':
+        sync_release_catalog(args)
+    elif args.action == 'manager-enable-updates':
+        enable_manager_updates(args)
+    elif args.action == 'manager-reconcile':
+        reconcile_manager(args)
     elif args.action == 'backup':
         backup(args)
     elif args.action == 'restore':

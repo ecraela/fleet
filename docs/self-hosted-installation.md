@@ -178,6 +178,46 @@ A durable pending marker blocks conflicting changes after interruption.
 Recovery resumes bootstrap or restores the retained previous software. Missing
 or changed installation keys fail closed; restore them rather than reinitialize.
 
+### UI-managed signed releases
+
+First upgrade manually to a Fleet release whose signed manifest declares
+`managed_upgrades: true`, then install the separate host supervisor as Linux
+root. It uses the current release's verified `selfhostctl.py` and `agentctl.py`
+pair, a distinct host-only credential, and systemd timers. Enabling it on an
+older installation adds that credential to the manager container and briefly
+restarts management. It never gives the manager a Docker socket or host shell.
+
+```sh
+python3 -I /srv/haproxy-manager/releases/vMAJOR.MINOR.PATCH/selfhostctl.py \
+  manager-enable-updates --directory /srv/haproxy-manager
+systemctl status ecraela-fleet-manager-updater.timer ecraela-fleet-catalog-sync.timer
+```
+
+For an offline Ed25519 installation, append `--public-key` with the existing
+publisher key path to `manager-enable-updates`.
+
+The hourly catalog timer verifies signed public release metadata; an offline
+installation can use `catalog-add --directory ... --release ... --version ...
+--public-key ...` with a complete signed bundle. The standalone or Converge
+Software tab then offers only exact compatible releases. A target must support
+managed upgrade reporting and every known node must have a fresh agent version
+inside the target's signed agent range. The host repeats verification and
+checks disk, available memory, image digest and the current peer cohort before
+switching. Manager and ingest restart together; the console, collection and
+management briefly pause. HAProxy keeps serving its loaded configuration.
+When the manager port is published on loopback, the host updater talks to that
+local HTTPS listener; it does not depend on the agents' Docker DNS name.
+For offline agent updates, stage the signed target on each selected node host
+with `agentctl.py stage-release` before requesting it in the UI.
+
+The host retains the previous signed release and automatically restores it if
+candidate readiness fails. Use `manager-reconcile --directory ...` or inspect
+`journalctl -u ecraela-fleet-manager-updater.service` to diagnose a paused
+update. If a pending switch was interrupted, the updater runs local recovery
+before contacting the manager again. Old releases without the managed-upgrade
+capability remain valid manual rollback targets but cannot be selected by this
+UI; after a manual rollback, run the authenticated host installer for recovery.
+
 ## Encrypted and authenticated backup
 
 Provision recovery keys outside installation/node state. age encrypts to an
@@ -323,6 +363,22 @@ the original trusted certificates and keys. Compatible upgrade, explicit rollbac
 broken-start automatic rollback, source-fencing rejection, restored local login,
 fresh node telemetry and historic metric points all passed. Releases were signed
 disposable fixtures, not a published production tag.
+
+On 2026-11-10, the isolated 4-GiB rehearsal VM passed signed desired-state
+acceptance with Linux systemd updaters. The host imported two exact fixture
+releases, reported readiness, upgraded and rolled back an agent canary, then
+upgraded and rolled back manager/ingest. All four API-queued changes reported
+observed success. Two HAProxy nodes served 144 requests during those changes
+with zero failures. Run this as Linux root on an otherwise empty Docker host:
+
+```sh
+make managed-upgrade-acceptance HAPROXY_MANAGED_ARGS='--work /tmp/fleet-managed-smoke --with-agents'
+```
+
+`--colima-profile NAME` runs the host updater in a dedicated local VM. The
+full two-node acceptance also passed 559 serving requests without failure
+while it exercised install, manual upgrade, rollback, automatic rollback,
+backup and restore. These fixtures do not qualify a published production tag.
 
 An earlier shared 2-GiB development-VM trial exhausted memory and stopped the
 development metrics store; it was restarted and both original nodes reported
