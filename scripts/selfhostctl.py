@@ -291,7 +291,7 @@ def release(folder, version, key=None):
     profile = json.loads(files['selfhost.json'])
     repositories = {'postgres': 'postgres', 'metrics': 'victoriametrics/victoria-metrics',
                     'logs': 'victoriametrics/victoria-logs'}
-    if (profile.get('schema') != 1 or profile.get('database_schema') not in (19, 20, 21) or
+    if (profile.get('schema') != 1 or profile.get('database_schema') not in (19, 20, 21, 22) or
             set(profile.get('images', {})) != set(repositories)):
         raise Error('Unsupported self-hosted storage or database schema')
     for name, repository in repositories.items():
@@ -541,7 +541,7 @@ class Engine:
                                '-d', 'haproxy_manager', '-Atc',
                                'SELECT max(version) FROM hm_schema_migrations;').decode().strip()
         # Additive schemas may remain when rolling a manager binary back.
-        if version != str(profile['database_schema']) and not (int(version) <= 21 and int(version) >= profile['database_schema']):
+        if version != str(profile['database_schema']) and not (int(version) <= 22 and int(version) >= profile['database_schema']):
             raise Error('The running database schema differs from this supported release profile')
 
     def sql(self, sql):
@@ -730,8 +730,8 @@ def complete_install(root, engine, history):
 
 
 def compatible(old, candidate):
-    if (old.get('database_schema') not in (19, 20, 21) or candidate.get('database_schema') not in (19, 20, 21) or
-            {**old, 'database_schema': 21} != {**candidate, 'database_schema': 21}):
+    if (old.get('database_schema') not in (19, 20, 21, 22) or candidate.get('database_schema') not in (19, 20, 21, 22) or
+            {**old, 'database_schema': 22} != {**candidate, 'database_schema': 22}):
         raise Error('This release changes storage pins/schema; a separately qualified migration is required')
 
 
