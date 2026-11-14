@@ -160,10 +160,11 @@ uses a separate database owner for migrations, and checks UI/fleet/stores/versio
 A failed candidate restores the previous software. HAProxy keeps serving its
 loaded configuration during management restarts. Agent upgrades remain separate.
 
-Storage image pins must remain unchanged. The installer supports the
-specific additive schema-19-to-20 migration for live observations; other schema
-changes are refused pending separate qualification. Software rollback leaves
-schema 20 in place and runs the previous manager/ingestion binaries. It never
+Storage image pins must remain unchanged. The installer supports the specific
+additive schema-19-to-20 migration for live observations and schema-20-to-21
+migration for software update history. Other schema changes are refused pending
+separate qualification. Software rollback retains the highest applied schema
+and runs the previous manager/ingestion binaries. It never
 rewinds database data, renewed certificates, node keys or journals, and selects
 only the retained previous release. The rc.5 installer predates this migration
 and rejects schema 20. Host tools before rc.7 also omit connector settings;
