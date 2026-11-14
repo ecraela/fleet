@@ -21,6 +21,31 @@
   white-space: pre-wrap;
 }
 
+.cv-haproxy-software > .cv-section__content > .cv-select {
+  width: min(100%, var(--cv-content-width-form));
+}
+
+.cv-haproxy-software > .cv-section__content > .cv-button {
+  align-self: flex-start;
+}
+
+.cv-haproxy-fleet-controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--cv-space-4);
+}
+
+.cv-haproxy-fleet-controls > .cv-select {
+  flex: 0 1 24rem;
+  min-width: min(100%, 16rem);
+}
+
+.cv-haproxy-fleet-controls > .cv-button {
+  flex: none;
+  width: auto;
+}
+
 .cv-haproxy-charts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

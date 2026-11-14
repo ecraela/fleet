@@ -98,7 +98,6 @@ export function HAProxyClusters({
   fleet,
   client,
   href,
-  onOpen,
   query,
   onQuery,
   health,
@@ -109,7 +108,6 @@ export function HAProxyClusters({
   fleet: HAProxyFleet;
   client: HAProxyClient;
   href: (id: string) => string;
-  onOpen: (id: string) => void;
   query: string;
   onQuery: (value: string) => void;
   health: string;
@@ -150,6 +148,10 @@ export function HAProxyClusters({
       return data ? [[node.id, data]] : [];
     }),
   );
+  const loadingTraffic =
+    !!ids &&
+    (state.ids !== ids || state.loading) &&
+    !Object.keys(histories).length;
   useEffect(() => {
     const controller = new AbortController();
     const nodeIds = ids ? ids.split(",") : [];
@@ -229,7 +231,9 @@ export function HAProxyClusters({
         color={metric === "traffic_out" ? "teal" : "blue"}
         summary={
           current === null
-            ? "Not observed"
+            ? loadingTraffic
+              ? "Loading…"
+              : "Not observed"
             : metric === "traffic_out"
               ? formatBits(current)
               : formatMetric(current, "responses/s")
@@ -272,19 +276,17 @@ export function HAProxyClusters({
       {state.ids === ids && state.failed && (
         <ConnectionIssue message="Cluster charts: refresh interrupted; retrying automatically." />
       )}
-      {state.ids === ids &&
-        state.loading &&
-        !Object.keys(histories).length &&
-        !!ids && (
+      {loadingTraffic && (
+        <div className="cv-sr-only">
           <LoadingStatus delayMs={1000}>Loading cluster traffic…</LoadingStatus>
-        )}
+        </div>
+      )}
       <DataTable
         aria-label="HAProxy clusters"
         density="compact"
         rowHighlight="none"
         rows={visible}
         rowLabel={(cluster) => cluster.name}
-        onRowAction={(id) => onOpen(String(id))}
         columns={[
           {
             id: "name",

@@ -21,6 +21,7 @@ import {
   type HAProxyInstallationSoftwarePlan,
   type HAProxyInstallationSoftwareView,
 } from "./haproxy-api";
+import { softwareAction } from "./haproxy-software-version";
 
 const active = new Set([
   "queued",
@@ -397,7 +398,6 @@ export function HAProxySoftware({
   managerVersion?: string | undefined;
 }) {
   const [nodeId, setNodeId] = useState("");
-  const [action, setAction] = useState<"upgrade" | "rollback">("upgrade");
   const [version, setVersion] = useState("");
   const [releases, setReleases] = useState<HAProxySoftwareRelease[] | null>(
     null,
@@ -408,6 +408,10 @@ export function HAProxySoftware({
   const [planError, setPlanError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const node = nodes.find((item) => item.id === nodeId);
+  const currentVersion = view?.observed?.build?.version ?? node?.agent?.version;
+  const action = softwareAction(currentVersion, version);
+  const selectedPlan =
+    plan?.release.version === version && plan.action === action ? plan : null;
 
   useEffect(() => {
     if (!nodes.some((item) => item.id === nodeId))
@@ -454,8 +458,9 @@ export function HAProxySoftware({
   }, [client, nodeId]);
 
   useEffect(() => {
-    if (!client || !nodeId || !version) {
+    if (!client || !nodeId || !action) {
       setPlan(null);
+      setPlanError(null);
       return;
     }
     let alive = true;
@@ -477,7 +482,7 @@ export function HAProxySoftware({
     nodeId,
     version,
     action,
-    node?.agent?.version,
+    currentVersion,
     view?.updater?.last_seen,
     view?.updates[0]?.status,
   ]);
@@ -489,7 +494,15 @@ export function HAProxySoftware({
     updater && Date.now() - Date.parse(updater.last_seen) < 90_000;
 
   const request = async () => {
-    if (!client || !plan?.eligible || !node || !version || busy) return;
+    if (
+      !client ||
+      !selectedPlan?.eligible ||
+      selectedPlan.current.version !== currentVersion ||
+      !node ||
+      !action ||
+      busy
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -498,7 +511,7 @@ export function HAProxySoftware({
         request_id: crypto.randomUUID(),
         action,
         version,
-        expected_version: plan.current.version,
+        expected_version: selectedPlan.current.version,
       });
       setView(await client.nodeSoftware(node.id));
       setPlan(null);
@@ -527,6 +540,7 @@ export function HAProxySoftware({
 
   return (
     <Section
+      className="cv-haproxy-software"
       layout="stack"
       title="Signed agent updates"
       description="Choose an exact verified release for one node. The separate host updater checks the bundle and activates it."
@@ -563,6 +577,7 @@ export function HAProxySoftware({
             onChange={(value) => {
               setNodeId(String(value));
               setVersion("");
+              setView(null);
             }}
             options={nodes.map((item) => ({ id: item.id, label: item.name }))}
           />
@@ -620,19 +635,6 @@ export function HAProxySoftware({
             </p>
           )}
           <Select
-            label="Change"
-            value={action}
-            onChange={(value) => {
-              setAction(String(value) as "upgrade" | "rollback");
-              setVersion("");
-            }}
-            options={[
-              { id: "upgrade", label: "Upgrade agent" },
-              { id: "rollback", label: "Roll back to retained release" },
-            ]}
-            isDisabled={!!pending || busy}
-          />
-          <Select
             label="Signed release"
             value={version}
             onChange={(value) => setVersion(String(value))}
@@ -645,6 +647,19 @@ export function HAProxySoftware({
             ]}
             isDisabled={!!pending || busy || !releases?.length}
           />
+          {version && !action && (
+            <InlineTip
+              variant={currentVersion === version ? "info" : "warning"}
+            >
+              {currentVersion === version
+                ? "This release is already running."
+                : currentVersion === "dev" && !updater
+                  ? "This demo agent runs a development build without a host updater. You can preview releases here, but it cannot install them."
+                  : currentVersion
+                    ? "Managed updates require an installed Fleet release and a separate host updater."
+                    : "The current agent version must be reported before requesting an update."}
+            </InlineTip>
+          )}
           {releases?.find((release) => release.version === version) && (
             <SignedReleaseDetails
               release={releases.find((release) => release.version === version)!}
@@ -657,31 +672,38 @@ export function HAProxySoftware({
               {planError}
             </InlineTip>
           )}
-          {plan && (
+          {selectedPlan && (
             <>
-              <InlineTip variant={plan.eligible ? "info" : "warning"}>
-                {plan.eligible
-                  ? "Ready to request this exact release."
-                  : (plan.reason ?? "This update is blocked.")}
+              <InlineTip variant={selectedPlan.eligible ? "info" : "warning"}>
+                {selectedPlan.eligible
+                  ? action === "rollback"
+                    ? "Ready to restore the retained previous release."
+                    : "Ready to request this exact release."
+                  : (selectedPlan.reason ?? "This update is blocked.")}
               </InlineTip>
               <p>
-                {plan.traffic_impact}. {plan.management_impact}.
+                {selectedPlan.traffic_impact}. {selectedPlan.management_impact}.
               </p>
               <p>
-                Publisher: {plan.release.publisher}. Manager compatibility:{" "}
-                {plan.release.compatibility.manager.min}–
-                {plan.release.compatibility.manager.max}.
+                Publisher: {selectedPlan.release.publisher}. Manager
+                compatibility: {selectedPlan.release.compatibility.manager.min}–
+                {selectedPlan.release.compatibility.manager.max}.
               </p>
             </>
           )}
           <Button
             onPress={() => void request()}
-            isDisabled={busy || !!pending || !plan?.eligible}
+            isDisabled={
+              busy ||
+              !!pending ||
+              !selectedPlan?.eligible ||
+              selectedPlan.current.version !== currentVersion
+            }
           >
             {busy
               ? "Requesting…"
               : action === "rollback"
-                ? "Request rollback"
+                ? "Restore previous release"
                 : "Request agent update"}
           </Button>
         </>
@@ -692,20 +714,29 @@ export function HAProxySoftware({
 
 export function HAProxyManagerSoftware({
   client,
+  bridgeOnly = false,
 }: {
   client: HAProxyClient | null;
+  bridgeOnly?: boolean;
 }) {
   const [releases, setReleases] = useState<HAProxySoftwareRelease[]>([]);
   const [view, setView] = useState<HAProxyInstallationSoftwareView | null>(
     null,
   );
-  const [action, setAction] = useState<"upgrade" | "rollback">("upgrade");
   const [version, setVersion] = useState("");
   const [plan, setPlan] = useState<HAProxyInstallationSoftwarePlan | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const currentVersion = view?.observed.version;
+  const selectableReleases =
+    bridgeOnly && currentVersion === "v0.1.0-rc.22"
+      ? releases.filter((item) => item.version === "v0.1.0-rc.23")
+      : releases;
+  const action = softwareAction(currentVersion, version);
+  const selectedPlan =
+    plan?.release.version === version && plan.action === action ? plan : null;
 
   useEffect(() => {
     if (!client) return;
@@ -738,7 +769,7 @@ export function HAProxyManagerSoftware({
   }, [client]);
 
   useEffect(() => {
-    if (!client || !version) {
+    if (!client || !action) {
       setPlan(null);
       return;
     }
@@ -759,7 +790,7 @@ export function HAProxyManagerSoftware({
     client,
     version,
     action,
-    view?.observed.version,
+    currentVersion,
     view?.updater?.last_seen,
     view?.updates[0]?.status,
   ]);
@@ -768,7 +799,14 @@ export function HAProxyManagerSoftware({
   const updaterFresh =
     view?.updater && Date.now() - Date.parse(view.updater.last_seen) < 90_000;
   const request = async () => {
-    if (!client || !plan?.eligible || busy) return;
+    if (
+      !client ||
+      !selectedPlan?.eligible ||
+      selectedPlan.current.version !== currentVersion ||
+      !action ||
+      busy
+    )
+      return;
     setBusy(true);
     setError(null);
     try {
@@ -777,7 +815,7 @@ export function HAProxyManagerSoftware({
         request_id: crypto.randomUUID(),
         action,
         version,
-        expected_version: plan.current.version,
+        expected_version: selectedPlan.current.version,
       });
       setView(await client.installationSoftware());
       setPlan(null);
@@ -804,6 +842,7 @@ export function HAProxyManagerSoftware({
 
   return (
     <Section
+      className="cv-haproxy-software"
       layout="stack"
       title="Manager and ingest updates"
       description="Choose an exact signed Fleet release for the installation control plane."
@@ -877,31 +916,31 @@ export function HAProxyManagerSoftware({
             </p>
           )}
           <Select
-            label="Change"
-            value={action}
-            onChange={(value) => {
-              setAction(String(value) as "upgrade" | "rollback");
-              setVersion("");
-            }}
-            options={[
-              { id: "upgrade", label: "Upgrade manager and ingest" },
-              { id: "rollback", label: "Roll back to retained release" },
-            ]}
-            isDisabled={!!pending || busy}
-          />
-          <Select
             label="Signed release"
             value={version}
             onChange={(value) => setVersion(String(value))}
             options={[
               { id: "", label: "Choose a verified release" },
-              ...releases.map((item) => ({
+              ...selectableReleases.map((item) => ({
                 id: item.version,
                 label: item.version,
               })),
             ]}
-            isDisabled={!!pending || busy || !releases.length}
+            isDisabled={!!pending || busy || !selectableReleases.length}
           />
+          {version && !action && (
+            <InlineTip
+              variant={currentVersion === version ? "info" : "warning"}
+            >
+              {currentVersion === version
+                ? "This release is already running."
+                : currentVersion === "dev" && !view.updater
+                  ? "This demo manager runs a development build without a host updater. You can preview releases here, but it cannot install them."
+                  : currentVersion
+                    ? "Managed updates require an installed Fleet release and a separate host updater."
+                    : "The current manager version must be reported before requesting an update."}
+            </InlineTip>
+          )}
           {releases.find((release) => release.version === version) && (
             <SignedReleaseDetails
               release={releases.find((release) => release.version === version)!}
@@ -909,31 +948,38 @@ export function HAProxyManagerSoftware({
               role="manager"
             />
           )}
-          {plan && (
+          {selectedPlan && (
             <>
-              <InlineTip variant={plan.eligible ? "info" : "warning"}>
-                {plan.eligible
-                  ? `Ready with ${plan.agent_count} compatible agent${plan.agent_count === 1 ? "" : "s"}.`
-                  : plan.reason || "This update is blocked."}
+              <InlineTip variant={selectedPlan.eligible ? "info" : "warning"}>
+                {selectedPlan.eligible
+                  ? action === "rollback"
+                    ? `Ready to restore the retained release with ${selectedPlan.agent_count} compatible agent${selectedPlan.agent_count === 1 ? "" : "s"}.`
+                    : `Ready with ${selectedPlan.agent_count} compatible agent${selectedPlan.agent_count === 1 ? "" : "s"}.`
+                  : selectedPlan.reason || "This update is blocked."}
               </InlineTip>
               <p>
-                {plan.traffic_impact}. {plan.management_impact}.
+                {selectedPlan.traffic_impact}. {selectedPlan.management_impact}.
               </p>
               <p>
-                Publisher: {plan.release.publisher}. Agent compatibility:{" "}
-                {plan.release.compatibility.agent.min}–
-                {plan.release.compatibility.agent.max}.
+                Publisher: {selectedPlan.release.publisher}. Agent
+                compatibility: {selectedPlan.release.compatibility.agent.min}–
+                {selectedPlan.release.compatibility.agent.max}.
               </p>
             </>
           )}
           <Button
             onPress={() => void request()}
-            isDisabled={busy || !!pending || !plan?.eligible}
+            isDisabled={
+              busy ||
+              !!pending ||
+              !selectedPlan?.eligible ||
+              selectedPlan.current.version !== currentVersion
+            }
           >
             {busy
               ? "Requesting…"
               : action === "rollback"
-                ? "Request manager rollback"
+                ? "Restore previous release"
                 : "Request manager update"}
           </Button>
         </>

@@ -62,7 +62,12 @@ def retain_demo_images(command, env):
 
 
 def compose(*args, check=True):
-    env = dict(os.environ, HAPROXY_UID=str(os.getuid()), HAPROXY_GID=str(os.getgid()), HAPROXY_PAIR_STATE=str(selected_state()))
+    folder = selected_state()
+    installation_file = STATE / 'organization-id'
+    installation = installation_file.read_text().strip() if installation_file.exists() else None
+    prefix = 'converge-haproxy_pair' if folder.name == installation else 'converge-haproxy_pair-' + folder.name
+    env = dict(os.environ, HAPROXY_UID=str(os.getuid()), HAPROXY_GID=str(os.getgid()),
+               HAPROXY_PAIR_STATE=str(folder), HAPROXY_PAIR_VOLUME_PREFIX=prefix)
     command = ['docker', 'compose', '--project-directory', str(ROOT), '--env-file', str(STATE / 'compose.env'), '-f', str(ROOT / 'compose.yaml')]
     if os.getenv('HAPROXY_PAIR_STANDALONE', '1') != '1':
         command += ['-f', str(ROOT / 'compose.console.yaml')]
@@ -440,6 +445,9 @@ def main():
         prepare()
         compose('build', 'manager', 'haproxy-a', 'pair-backend')
         compose('up', '-d', 'postgres', 'victoriametrics', 'manager', 'ingest', 'pair-backend', 'pair-backend-2', 'pair-config-init')
+        # The manager reads the tenant-bound operator registry at startup.
+        # Recreate it after prepare() changes the active local organization.
+        compose('up', '-d', '--force-recreate', 'manager')
         for letter in ('a', 'b'):
             compose('up', '-d', '--wait', f'haproxy-{letter}')
         compose('up', '-d', 'pair-entrypoint')

@@ -64,6 +64,9 @@ func (m *Memory) CreateInstallationUpdate(ctx context.Context, org string, r Ins
 		}
 		return software.InstallationUpdate{}, domain.ErrConflict
 	}
+	if fleet := m.activeFleetUpdate(); fleet != nil && !fleetStepAuthorized(ctx, *fleet, org, "manager", "", r.RequestID) {
+		return software.InstallationUpdate{}, domain.ErrConflict
+	}
 	for _, update := range m.installationUpdates {
 		if update.Active() {
 			return software.InstallationUpdate{}, domain.ErrConflict
@@ -247,6 +250,15 @@ func (p *Postgres) CreateInstallationUpdate(ctx context.Context, org string, r I
 			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		var fleetRaw []byte
+		if err := tx.QueryRow(ctx, `SELECT payload FROM hm_fleet_updates WHERE status IN ('queued','running')`).Scan(&fleetRaw); err == nil {
+			var fleet software.FleetUpdate
+			if json.Unmarshal(fleetRaw, &fleet) != nil || !fleetStepAuthorized(ctx, fleet, org, "manager", "", r.RequestID) {
+				return domain.ErrConflict
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 		var agentsActive bool

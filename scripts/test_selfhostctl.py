@@ -64,9 +64,14 @@ class SelfHosted(unittest.TestCase):
         return root, c, h
 
     def test_authenticates_installer_profile_and_every_storage_pin(self):
-        folder, manifest, profile = self.signed()
+        current_profile = json.loads((ROOT / 'deploy/selfhost.json').read_text())
+        folder, manifest, profile = self.signed(profile={**current_profile, 'database_schema': 21})
         self.assertEqual(ctl.release(folder, manifest['version'], self.pub)[:2], (manifest, profile))
-        (folder / 'selfhost.json').write_text(json.dumps({**profile, 'database_schema': 22}))
+        next_profile = {**profile, 'database_schema': 22}
+        next_folder, next_manifest, _ = self.signed('v0.1.1', next_profile)
+        self.assertEqual(ctl.release(next_folder, next_manifest['version'], self.pub)[:2],
+                         (next_manifest, next_profile))
+        (folder / 'selfhost.json').write_text(json.dumps({**profile, 'database_schema': 23}))
         with self.assertRaises(ctl.Error):
             ctl.release(folder, manifest['version'], self.pub)
 
@@ -366,19 +371,23 @@ class SelfHosted(unittest.TestCase):
     def test_storage_changes_cannot_silently_downgrade_database_or_storage(self):
         _, _, profile = self.signed()
         for candidate in ({**profile, 'database_schema': 18},
-                          {**profile, 'database_schema': 22},
+                          {**profile, 'database_schema': 23},
                           {**profile, 'images': {**profile['images'], 'postgres': 'other'}}):
             with self.assertRaises(ctl.Error):
                 ctl.compatible(profile, candidate)
 
     def test_only_the_known_additive_database_change_preserves_storage_compatibility(self):
-        _, _, current = self.signed()
+        profile = json.loads((ROOT / 'deploy/selfhost.json').read_text())
+        _, _, current = self.signed(profile={**profile, 'database_schema': 21})
         baseline = {**current, 'database_schema': 19}
         intermediate = {**current, 'database_schema': 20}
+        next_schema = {**current, 'database_schema': 22}
         ctl.compatible(baseline, current)
         ctl.compatible(current, baseline)
         ctl.compatible(intermediate, current)
         ctl.compatible(current, intermediate)
+        ctl.compatible(current, next_schema)
+        ctl.compatible(next_schema, current)
         self.assertEqual(baseline['database_schema'], 19)
         self.assertEqual(current['database_schema'], 21)
         with self.assertRaises(ctl.Error):
@@ -390,7 +399,9 @@ class SelfHosted(unittest.TestCase):
         engine = ctl.Engine(root, c)
         for expected, actual, valid in ((19, 19, True), (20, 20, True), (21, 21, True),
                                         (19, 20, True), (19, 21, True), (20, 21, True),
-                                        (20, 19, False), (21, 20, False), (19, 22, False)):
+                                        (19, 22, True), (21, 22, True), (22, 22, True),
+                                        (20, 19, False), (21, 20, False), (22, 21, False),
+                                        (19, 23, False)):
             with self.subTest(expected=expected, actual=actual), \
                     patch.object(engine, 'sql'), \
                     patch.object(engine, 'compose', side_effect=[b'', b'', f'{actual}\n'.encode()]):
@@ -427,7 +438,7 @@ class SelfHosted(unittest.TestCase):
                 self.assertEqual(after['current'], manifest)
                 self.assertEqual(after['identity'], initial['identity'])
                 self.assertIsNone(after['pending'])
-        self.assertEqual(Engine.migrations, [21, 19])
+        self.assertEqual(Engine.migrations, [22, 19])
 
     def test_acceptance_refuses_small_or_shared_engines_before_creating_a_lab(self):
         for info in ({'MemTotal': 2 << 30, 'ContainersRunning': 0},

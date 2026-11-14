@@ -73,6 +73,17 @@ class PairImagesTest(unittest.TestCase):
         with patch('pair.selected_state', return_value=self.folder), patch('pair.PAIR', self.folder), patch('pair.subprocess.run') as calls:
             pair.compose('ps', '--services')
         self.assertEqual(calls.call_count, 1)
+        self.assertEqual(calls.call_args.kwargs['env']['HAPROXY_PAIR_VOLUME_PREFIX'],
+                         'converge-haproxy_pair-' + self.folder.name)
+
+    def test_installation_pair_keeps_its_existing_volume_prefix(self):
+        organization = '12345678-1234-4234-8234-123456789abc'
+        (self.folder / 'organization-id').write_text(organization + '\n')
+        with patch('pair.STATE', self.folder), patch('pair.selected_state', return_value=self.folder / organization), \
+                patch('pair.PAIR', self.folder), patch('pair.subprocess.run') as calls:
+            pair.compose('ps')
+        self.assertEqual(calls.call_args.kwargs['env']['HAPROXY_PAIR_VOLUME_PREFIX'],
+                         'converge-haproxy_pair')
 
     def test_incomplete_image_inventory_cannot_allow_a_build(self):
         results = [subprocess.CompletedProcess([], 0, b'container-a\ncontainer-b', b''),
