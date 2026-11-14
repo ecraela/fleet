@@ -1,4 +1,4 @@
-FROM golang:1.26.10-alpine3.24 AS supervisor
+FROM golang:1.26.11-alpine3.24 AS supervisor
 WORKDIR /src
 COPY deploy/local/pair/supervisor/main.go ./main.go
 RUN CGO_ENABLED=0 GOMAXPROCS=2 GOMEMLIMIT=256MiB go build -trimpath -ldflags='-s -w' -o /demo-node main.go

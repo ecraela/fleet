@@ -1,4 +1,4 @@
-FROM golang:1.26.10-alpine3.24 AS build
+FROM golang:1.26.11-alpine3.24 AS build
 WORKDIR /src
 COPY deploy/local/backend.go ./backend.go
 RUN CGO_ENABLED=0 GOMAXPROCS=2 GOMEMLIMIT=256MiB go build -trimpath -ldflags='-s -w' -o /demo-backend backend.go

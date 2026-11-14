@@ -23,7 +23,7 @@ included here; that agreement must be settled separately before such a merge.
 
 ## Build environment
 
-Use Go 1.26.10, Node.js 24+, pnpm 11.25.0 and Python 3.11+. Docker Engine with
+Use Go 1.26.11, Node.js 24+, pnpm 11.25.0 and Python 3.11+. Docker Engine with
 Compose is needed for integration tests. Linux agent lifecycle tests additionally
 use systemd on a disposable Linux host. Do not run failure tests against customer
 infrastructure.
