@@ -33,6 +33,9 @@ type auditEvent struct {
 // Memory provides the same atomic enrollment and tenant semantics as Postgres
 // for tests. Production startup must use the persistent store.
 type Memory struct {
+	fleetUpdates             map[string]software.FleetUpdate
+	fleetRequests            map[string]string
+	fleetEvents              []software.FleetUpdate
 	softwareUpdates          map[string]software.Update
 	softwareRequests         map[string]string
 	softwareEvents           []software.Update
@@ -72,6 +75,8 @@ var _ Store = (*Memory)(nil)
 
 func NewMemory() *Memory {
 	return &Memory{
+		fleetUpdates:         make(map[string]software.FleetUpdate),
+		fleetRequests:        make(map[string]string),
 		softwareUpdates:      make(map[string]software.Update),
 		softwareRequests:     make(map[string]string),
 		softwareUpdaters:     make(map[string]software.Updater),

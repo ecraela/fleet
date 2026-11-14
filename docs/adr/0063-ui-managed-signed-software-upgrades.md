@@ -4,6 +4,12 @@ Status: accepted for implementation, 2026-11-09.
 
 ## Decision
 
+The operator selects one desired release for the installation. Fleet plans the
+manager, ingest and all non-revoked agents together; there are no per-node
+version picks, update groups or version tags. Hosts already on the signed
+target are verified and skipped. The installation request has one durable
+status and ordered host steps. Per-host state remains visible for diagnosis.
+
 Fleet records an operator's **desired exact release** separately from the
 software each process reports. The console presents a publisher-verified release
 catalog, the observed manager/ingest/agent versions, the desired version, the
@@ -17,6 +23,14 @@ target.
 
 The manager persists each request with tenant, actor, idempotency key, exact
 manifest digest, target hosts, previous observed releases and audit history.
+The installation coordinator persists a plan fingerprint and a stable child
+request ID for each host. It resumes after manager restart and dispatches the
+next host only after the prior host reports success and, for agents, a fresh
+healthy post-update HAProxy scrape. A failed, timed-out or unverified host
+pauses the installation; the operator repairs it and plans a new request from
+current observations. The manager serializes individual host requests with
+the installation request so a manual request cannot bypass its order.
+
 The host's **separate, locally installed updater** polls only its own desired
 state, independently verifies the publisher and artifacts, checks local disk and
 installation prerequisites, then invokes `agentctl.py` or `selfhostctl.py`.
@@ -64,8 +78,10 @@ The release qualification record tests both orders and the mixed-version
 window. Storage migrations are separately qualified, forward-compatible
 transitions; software rollback never rewinds identity, journals or schema.
 Schema 21 adds software request, updater and event tables without changing
-existing tables. A manual rc.21-to-rc.22 upgrade applies it with the separate
-database owner. Rolling the manager binary back to rc.21 retains schema 21;
+existing tables. Schema 22 adds the installation coordinator and immutable
+event history without giving the manager any host update authority. A manual
+rc.21-to-rc.22 upgrade applies schema 21 with the separate database owner.
+Rolling the manager binary back to rc.21 retains schema 21;
 the authenticated rc.22 host tool verifies that state and rc.21 must still
 serve its existing APIs and node cohort. The published-asset qualification
 must exercise this upgrade, rollback and re-upgrade on both Linux architectures
@@ -78,7 +94,7 @@ compatibility, readiness, likely control-plane interruption and rollback
 availability. A node request moves through queued, downloading, verifying,
 activating, checking, succeeded, rolled back or needs attention. A repeated
 idempotency key returns the same request. Another active change for that host
-is rejected. Agent rollout is sequential: one canary, then one host at a time,
+is rejected. Agent rollout is sequential, one host at a time,
 with fresh post-upgrade discovery and HAProxy scrape before the next host.
 Unknown outcome, insufficient resources or declining health pauses the rollout.
 

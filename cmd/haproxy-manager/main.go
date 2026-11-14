@@ -267,6 +267,7 @@ func serve(args []string) error {
 	if *role == "manager" {
 		go app.RunConnector(ctx)
 		go app.RunRollouts(ctx)
+		go app.RunFleetUpdates(ctx)
 		go app.RunACME(ctx)
 		go app.RunMaintenance(ctx)
 		go app.RunIncidents(ctx)

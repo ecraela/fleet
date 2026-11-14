@@ -204,7 +204,6 @@ describe("cluster-first workspace", () => {
           fleet={{ ...fleet, clusters, nodes }}
           client={client}
           href={(id) => "/overview?cluster=" + id}
-          onOpen={() => {}}
           query=""
           onQuery={() => {}}
           health="all"

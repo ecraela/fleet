@@ -179,6 +179,9 @@ func (m *Memory) CreateSoftwareUpdate(ctx context.Context, org, nodeID string, r
 		}
 		return software.Update{}, domain.ErrConflict
 	}
+	if fleet := m.activeFleetUpdate(); fleet != nil && !fleetStepAuthorized(ctx, *fleet, org, "agent", nodeID, r.RequestID) {
+		return software.Update{}, domain.ErrConflict
+	}
 	for _, update := range m.softwareUpdates {
 		if update.OrganizationID == org && update.ClusterID == node.ClusterID && update.Active() {
 			return software.Update{}, domain.ErrConflict
@@ -306,6 +309,15 @@ func (p *Postgres) CreateSoftwareUpdate(ctx context.Context, org, nodeID string,
 			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		var fleetRaw []byte
+		if err := tx.QueryRow(ctx, `SELECT payload FROM hm_fleet_updates WHERE status IN ('queued','running')`).Scan(&fleetRaw); err == nil {
+			var fleet software.FleetUpdate
+			if json.Unmarshal(fleetRaw, &fleet) != nil || !fleetStepAuthorized(ctx, fleet, org, "agent", nodeID, r.RequestID) {
+				return domain.ErrConflict
+			}
+		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
 		var installationActive bool

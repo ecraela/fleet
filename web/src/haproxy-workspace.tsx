@@ -49,11 +49,8 @@ import { HAProxyIncidents } from "./haproxy-incidents";
 import { HAProxyRollouts } from "./haproxy-rollouts";
 import { HAProxyListeners } from "./haproxy-listeners";
 import { HAProxyAutomaticTLS } from "./haproxy-acme";
-import {
-  HAProxyManagerSoftware,
-  HAProxySoftware,
-  HAProxySoftwareInventory,
-} from "./haproxy-software";
+import { HAProxySoftwareInventory } from "./haproxy-software";
+import { HAProxyFleetSoftware } from "./haproxy-fleet-software";
 
 export function HAProxyWorkspace({
   basePath,
@@ -511,7 +508,6 @@ export function HAProxyWorkspace({
               fleet={fleet}
               client={client}
               href={clusterHref}
-              onOpen={(id) => navigate(clusterHref(id))}
               query={params.get("cluster_query") ?? ""}
               onQuery={(value) => setParam("cluster_query", value)}
               health={params.get("cluster_health") ?? "all"}
@@ -738,6 +734,9 @@ export function HAProxyWorkspace({
               )}
               {(!installationSettings || settingsTab === "software") && (
                 <>
+                  {installationSettings && (
+                    <HAProxyFleetSoftware client={client} />
+                  )}
                   {installationSettings ? (
                     <HAProxySoftwareInventory client={client} />
                   ) : (
@@ -798,14 +797,6 @@ export function HAProxyWorkspace({
                         }
                       />
                     </Section>
-                  )}
-                  <HAProxySoftware
-                    client={client}
-                    nodes={installationSettings ? fleet.nodes : scopedNodes}
-                    managerVersion={fleet.manager_build?.version}
-                  />
-                  {installationSettings && (
-                    <HAProxyManagerSoftware client={client} />
                   )}
                 </>
               )}

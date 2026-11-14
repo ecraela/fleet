@@ -64,7 +64,8 @@ class SelfHosted(unittest.TestCase):
         return root, c, h
 
     def test_authenticates_installer_profile_and_every_storage_pin(self):
-        folder, manifest, profile = self.signed()
+        current_profile = json.loads((ROOT / 'deploy/selfhost.json').read_text())
+        folder, manifest, profile = self.signed(profile={**current_profile, 'database_schema': 21})
         self.assertEqual(ctl.release(folder, manifest['version'], self.pub)[:2], (manifest, profile))
         next_profile = {**profile, 'database_schema': 22}
         next_folder, next_manifest, _ = self.signed('v0.1.1', next_profile)
@@ -376,7 +377,8 @@ class SelfHosted(unittest.TestCase):
                 ctl.compatible(profile, candidate)
 
     def test_only_the_known_additive_database_change_preserves_storage_compatibility(self):
-        _, _, current = self.signed()
+        profile = json.loads((ROOT / 'deploy/selfhost.json').read_text())
+        _, _, current = self.signed(profile={**profile, 'database_schema': 21})
         baseline = {**current, 'database_schema': 19}
         intermediate = {**current, 'database_schema': 20}
         next_schema = {**current, 'database_schema': 22}
@@ -436,7 +438,7 @@ class SelfHosted(unittest.TestCase):
                 self.assertEqual(after['current'], manifest)
                 self.assertEqual(after['identity'], initial['identity'])
                 self.assertIsNone(after['pending'])
-        self.assertEqual(Engine.migrations, [21, 19])
+        self.assertEqual(Engine.migrations, [22, 19])
 
     def test_acceptance_refuses_small_or_shared_engines_before_creating_a_lab(self):
         for info in ({'MemTotal': 2 << 30, 'ContainersRunning': 0},

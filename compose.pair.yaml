@@ -364,8 +364,14 @@ services:
 
 volumes:
   pair-runtime-a:
+    name: ${HAPROXY_PAIR_VOLUME_PREFIX:-converge-haproxy_pair}-runtime-a
   pair-runtime-b:
+    name: ${HAPROXY_PAIR_VOLUME_PREFIX:-converge-haproxy_pair}-runtime-b
   pair-config-a:
+    name: ${HAPROXY_PAIR_VOLUME_PREFIX:-converge-haproxy_pair}-config-a
   pair-config-b:
+    name: ${HAPROXY_PAIR_VOLUME_PREFIX:-converge-haproxy_pair}-config-b
   pair-runtime-entrypoint:
+    name: ${HAPROXY_PAIR_VOLUME_PREFIX:-converge-haproxy_pair}-runtime-entrypoint
   pair-config-entrypoint:
+    name: ${HAPROXY_PAIR_VOLUME_PREFIX:-converge-haproxy_pair}-config-entrypoint

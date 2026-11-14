@@ -902,6 +902,49 @@ export interface HAProxyInstallationSoftwarePlan {
   updater?: HAProxySoftwareUpdater;
 }
 
+export interface HAProxyFleetSoftwareStep {
+  role: "manager" | "agent";
+  node_id?: string;
+  cluster_id?: string;
+  name: string;
+  expected_version: string;
+  request_id?: string;
+}
+
+export interface HAProxyFleetSoftwareUpdate {
+  id: string;
+  organization_id: string;
+  request_id: string;
+  target_version: string;
+  manifest_sha256: string;
+  fingerprint: string;
+  steps: HAProxyFleetSoftwareStep[];
+  next_step: number;
+  status: "queued" | "running" | "paused" | "succeeded";
+  reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HAProxyFleetSoftwarePlan {
+  release: HAProxySoftwareRelease;
+  manager: HAProxyAgentBuild;
+  eligible: boolean;
+  reason?: string;
+  fingerprint?: string;
+  node_count: number;
+  steps: HAProxyFleetSoftwareStep[];
+  management_impact: string;
+}
+
+export interface HAProxyFleetSoftwareView {
+  updates: HAProxyFleetSoftwareUpdate[];
+  current_update: {
+    status: HAProxySoftwareUpdate["status"];
+    error_code?: string;
+  } | null;
+}
+
 export interface MetricSeries {
   metric: Record<string, string>;
   value: [number, string];
@@ -1198,6 +1241,67 @@ export class HAProxyClient {
         "HAProxy returned an invalid signed release catalog.",
       );
     return result.releases;
+  }
+
+  async fleetSoftware(): Promise<HAProxyFleetSoftwareView> {
+    const result = await this.send<HAProxyFleetSoftwareView>("/software/fleet");
+    if (
+      !Array.isArray(result.updates) ||
+      result.updates.length > 20 ||
+      result.updates.some(
+        (u) =>
+          u.organization_id !== this.organizationId ||
+          !Array.isArray(u.steps) ||
+          u.steps.length > 5001,
+      )
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned invalid fleet software state.",
+      );
+    return result;
+  }
+
+  async fleetSoftwarePlan(version: string): Promise<HAProxyFleetSoftwarePlan> {
+    const result = await this.send<{ plan: HAProxyFleetSoftwarePlan }>(
+      `/software/fleet/plan?version=${encodeURIComponent(version)}`,
+    );
+    if (
+      result.plan?.release?.version !== version ||
+      typeof result.plan.eligible !== "boolean" ||
+      !Array.isArray(result.plan.steps) ||
+      result.plan.steps.length > 5001
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned an invalid fleet software plan.",
+      );
+    return result.plan;
+  }
+
+  async requestFleetSoftware(input: {
+    request_id: string;
+    version: string;
+    fingerprint: string;
+  }): Promise<HAProxyFleetSoftwareUpdate> {
+    const result = await this.send<{ update: HAProxyFleetSoftwareUpdate }>(
+      "/software/fleet",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+    if (
+      result.update?.organization_id !== this.organizationId ||
+      result.update.request_id !== input.request_id ||
+      result.update.target_version !== input.version ||
+      result.update.fingerprint !== input.fingerprint
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned an invalid fleet update receipt.",
+      );
+    return result.update;
   }
 
   async softwareInventory(

@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Server) configureSoftware() {
+	s.mux.HandleFunc("GET /v1/software/fleet", s.authorizeCapability("haproxy.read", s.fleetSoftware))
+	s.mux.HandleFunc("GET /v1/software/fleet/plan", s.authorizeCapability("haproxy.read", s.planFleetSoftware))
+	s.mux.HandleFunc("POST /v1/software/fleet", s.authorizeCapability("haproxy.manage", s.createFleetSoftware))
 	s.mux.HandleFunc("GET /v1/software/releases", s.authorizeCapability("haproxy.read", s.softwareReleases))
 	s.mux.HandleFunc("GET /v1/software/inventory", s.authorizeCapability("haproxy.read", s.softwareInventory))
 	s.mux.HandleFunc("GET /v1/software/manager", s.authorizeCapability("haproxy.read", s.installationSoftware))

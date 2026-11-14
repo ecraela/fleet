@@ -38,7 +38,9 @@ function actionError(error: unknown): string {
 }
 
 function mergeFleet(pages: HAProxyFleet[]): HAProxyFleet {
+  const manager = pages[0]?.manager_build;
   return {
+    ...(manager ? { manager_build: manager } : {}),
     clusters: pages[0]?.clusters ?? [],
     nodes: [
       ...new Map(
