@@ -236,7 +236,7 @@ choices; public deployment needs its own certificate lifecycle and key custody.
 
 ## Development checks
 
-Use Go 1.26.10 or a compatible Go 1.26 patch release:
+Use Go 1.26.11 or a compatible Go 1.26 patch release:
 
 ```sh
 make format

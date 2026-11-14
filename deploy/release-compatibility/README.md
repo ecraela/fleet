@@ -12,6 +12,10 @@ a candidate `v0.1.0-rc.22` with an `rc.21` manager and agent:
 }
 ```
 
+The same tag also needs reviewed operator notes in
+`deploy/release-notes/<exact-tag>.md`. The build embeds those notes in the signed
+release manifest; the host verifier passes them to the read-only catalog.
+
 `manager` describes the manager versions a candidate **agent** supports;
 `agent` describes the agent versions a candidate **manager** supports. Bounds
 are inclusive exact-release versions. The candidate's own version must be

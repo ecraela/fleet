@@ -155,7 +155,7 @@ without replacing local login.
 
 ## Frontend development and release builds
 
-Node 24+, pinned pnpm 11.25.0, Go 1.26.10 and Python 3.11+ are used in CI.
+Node 24+, pinned pnpm 11.25.0, Go 1.26.11 and Python 3.11+ are used in CI.
 
 ```sh
 make web-install

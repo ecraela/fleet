@@ -136,6 +136,8 @@ def _verify_release(folder, expected, public_key=None):
         validate_compatibility(m['compatibility'], expected)
     if 'managed_upgrades' in m and type(m['managed_upgrades']) is not bool:
         raise InstallError('Invalid managed upgrade capability')
+    if 'notes' in m and (not isinstance(m['notes'], str) or len(m['notes']) > 4096):
+        raise InstallError('Invalid signed release notes')
     if not isinstance(m.get('artifacts'), dict) or not 1 <= len(m['artifacts']) <= 12:
         raise InstallError('Invalid release artifact set')
     for name, digest in m['artifacts'].items():

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Badge,
   Button,
@@ -6,6 +6,7 @@ import {
   DescriptionList,
   InlineTip,
   LoadingStatus,
+  PaginatedDataTable,
   Section,
   Select,
 } from "@ecraela/ui";
@@ -15,6 +16,7 @@ import {
   type HAProxyNode,
   type HAProxySoftwarePlan,
   type HAProxySoftwareRelease,
+  type HAProxySoftwareInventoryNode,
   type HAProxySoftwareView,
   type HAProxyInstallationSoftwarePlan,
   type HAProxyInstallationSoftwareView,
@@ -27,6 +29,363 @@ const active = new Set([
   "verifying",
   "needs_attention",
 ]);
+
+export function SignedReleaseDetails({
+  release,
+  platform,
+  role,
+}: {
+  release: HAProxySoftwareRelease;
+  platform?: string | undefined;
+  role: "agent" | "manager";
+}) {
+  const digest =
+    platform &&
+    (role === "agent" ? release.agent_digests : release.manager_digests)[
+      platform
+    ];
+  return (
+    <div className="cv-haproxy-release-details">
+      <p>
+        <strong>Release notes</strong>
+      </p>
+      <p className="cv-haproxy-release-notes">
+        {release.notes || "No signed release notes were supplied."}
+      </p>
+      <DescriptionList columns={2}>
+        <DescriptionItem label="Publisher">{release.publisher}</DescriptionItem>
+        <DescriptionItem label="Supported platforms">
+          {release.platforms.join(", ")}
+        </DescriptionItem>
+        <DescriptionItem label="Protocol / state format">
+          {release.protocol} / {release.state_schema}
+        </DescriptionItem>
+        <DescriptionItem label="Manifest SHA-256">
+          <code className="cv-haproxy-digest">{release.manifest_sha256}</code>
+        </DescriptionItem>
+        <DescriptionItem
+          label={`${role === "agent" ? "Agent" : "Manager"} SHA-256${platform ? ` (${platform})` : ""}`}
+        >
+          {digest ? (
+            <code className="cv-haproxy-digest">{digest}</code>
+          ) : (
+            "No artifact for this platform"
+          )}
+        </DescriptionItem>
+        <DescriptionItem label="Manager compatibility">
+          {release.compatibility.manager.min}–
+          {release.compatibility.manager.max}
+        </DescriptionItem>
+        <DescriptionItem label="Agent compatibility">
+          {release.compatibility.agent.min}–{release.compatibility.agent.max}
+        </DescriptionItem>
+      </DescriptionList>
+    </div>
+  );
+}
+
+export function HAProxySoftwareInventory({
+  client,
+}: {
+  client: HAProxyClient | null;
+}) {
+  const [rows, setRows] = useState<HAProxySoftwareInventoryNode[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [healthPartial, setHealthPartial] = useState(false);
+  const [releases, setReleases] = useState<HAProxySoftwareRelease[]>([]);
+  const [manager, setManager] =
+    useState<HAProxyInstallationSoftwareView | null>(null);
+  const cursors = useRef<(string | undefined)[]>([undefined]);
+
+  useEffect(() => {
+    setRows([]);
+    setLoaded(false);
+    setCursor(null);
+    setManager(null);
+    setReleases([]);
+    setError(null);
+    setHealthPartial(false);
+    cursors.current = [undefined];
+    if (!client) return;
+    let alive = true;
+    const refresh = () => {
+      if (document.hidden) return;
+      void Promise.all([
+        Promise.all(
+          cursors.current.map((cursor) => client.softwareInventory(cursor)),
+        ),
+        client.installationSoftware(),
+        client.softwareReleases(),
+      ])
+        .then(([pages, installation, catalog]) => {
+          if (!alive) return;
+          setRows([
+            ...new Map(
+              pages
+                .flatMap((page) => page.nodes)
+                .map((row) => [row.node.id, row]),
+            ).values(),
+          ]);
+          setCursor(pages.at(-1)?.next_cursor ?? null);
+          setHealthPartial(pages.some((page) => page.partial));
+          setManager(installation);
+          setReleases(catalog);
+          setError(null);
+          setLoaded(true);
+        })
+        .catch((cause) => {
+          if (alive) {
+            setError(haproxyErrorMessage(cause));
+            setLoaded(true);
+          }
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [client]);
+
+  const loadMore = async () => {
+    if (!client || !cursor || loading) return;
+    setLoading(true);
+    try {
+      const page = await client.softwareInventory(cursor);
+      cursors.current.push(cursor);
+      setRows((current) => [
+        ...new Map(
+          [...current, ...page.nodes].map((row) => [row.node.id, row]),
+        ).values(),
+      ]);
+      setCursor(page.next_cursor);
+      setHealthPartial((current) => current || page.partial);
+      setError(null);
+    } catch (cause) {
+      setError(haproxyErrorMessage(cause));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signedBuild = (row: HAProxySoftwareInventoryNode) => {
+    const build = row.observed?.build;
+    return releases.find(
+      (release) =>
+        release.version === build?.version &&
+        release.agent_digests[build.platform] === build.executable_sha256,
+    );
+  };
+  const currentStatus = (row: HAProxySoftwareInventoryNode) =>
+    row.observed?.connected &&
+    Date.now() - Date.parse(row.observed.last_seen) < 6_000
+      ? "Current"
+      : row.observed
+        ? "Last reported"
+        : "Unknown";
+  const updateStatus = (row: HAProxySoftwareInventoryNode) =>
+    row.latest
+      ? `${row.latest.status.replaceAll("_", " ")}${row.latest.error_code ? ` (${row.latest.error_code})` : ""}`
+      : "No update recorded";
+  const healthStatus = (row: HAProxySoftwareInventoryNode) =>
+    !row.metrics_available
+      ? "Unknown"
+      : !row.telemetry_fresh
+        ? "Telemetry stale"
+        : row.scrape_ok
+          ? "Healthy"
+          : "HAProxy unavailable";
+  const tableRows = rows.map((row) => ({ ...row, id: row.node.id }));
+  const managerRelease =
+    manager &&
+    releases.find(
+      (release) =>
+        release.version === manager.observed.version &&
+        release.manager_digests[manager.observed.platform] ===
+          manager.observed.executable_sha256,
+    );
+  const managerUpdaterFresh =
+    !!manager?.updater &&
+    Date.now() - Date.parse(manager.updater.last_seen) < 90_000;
+  const ingestVerified =
+    !!manager?.updater?.ready &&
+    managerUpdaterFresh &&
+    manager.updater.ingest_version === manager.observed.version;
+  return (
+    <Section
+      layout="stack"
+      title="Fleet software inventory"
+      description="Observed processes and host updater state across all nodes. Unknown values have not been verified by the host."
+    >
+      {error && (
+        <InlineTip variant="error" role="alert">
+          {error}
+        </InlineTip>
+      )}
+      {healthPartial && (
+        <InlineTip>Some HAProxy health observations are unavailable.</InlineTip>
+      )}
+      {!loaded && client && (
+        <LoadingStatus delayMs={1000}>Loading fleet software…</LoadingStatus>
+      )}
+      {!client && (
+        <InlineTip>Connect to the manager to inspect fleet software.</InlineTip>
+      )}
+      {manager && (
+        <DescriptionList columns={3}>
+          <DescriptionItem label="Manager">
+            {manager.observed.version} ({manager.observed.platform}, protocol{" "}
+            {manager.observed.protocol})
+          </DescriptionItem>
+          <DescriptionItem label="Manager signed release match">
+            {managerRelease?.publisher || "Unknown"}
+          </DescriptionItem>
+          <DescriptionItem label="Manager health">Responding</DescriptionItem>
+          <DescriptionItem label="Manager SHA-256">
+            <code className="cv-haproxy-digest">
+              {manager.observed.executable_sha256}
+            </code>
+          </DescriptionItem>
+          <DescriptionItem label="Ingest">
+            {manager.updater?.ingest_version || "Unknown"}
+          </DescriptionItem>
+          <DescriptionItem label="Ingest health">
+            {ingestVerified ? "Verified by host updater" : "Unknown"}
+          </DescriptionItem>
+          <DescriptionItem label="Ingest platform / protocol">
+            {ingestVerified
+              ? `${manager.observed.platform} / ${manager.observed.protocol}`
+              : "Unknown"}
+          </DescriptionItem>
+          <DescriptionItem label="Ingest SHA-256">
+            {ingestVerified && managerRelease ? (
+              <code className="cv-haproxy-digest">
+                {managerRelease.manager_digests[manager.observed.platform]}
+              </code>
+            ) : (
+              "Unknown"
+            )}
+          </DescriptionItem>
+          <DescriptionItem label="Manager updater">
+            {manager.updater?.ready && managerUpdaterFresh
+              ? "Ready"
+              : "Unavailable or not reporting"}
+          </DescriptionItem>
+          <DescriptionItem label="Host report last seen">
+            {manager.updater?.last_seen
+              ? new Date(manager.updater.last_seen).toLocaleString()
+              : "Unknown"}
+          </DescriptionItem>
+          <DescriptionItem label="Manager desired">
+            {manager.updates.find((item) => active.has(item.status))
+              ?.target_version || "None"}
+          </DescriptionItem>
+          <DescriptionItem label="Manager previous">
+            {manager.updater?.previous_version || "Unknown"}
+          </DescriptionItem>
+          <DescriptionItem label="Manager update">
+            {manager.updates[0]?.status.replaceAll("_", " ") ||
+              "No update recorded"}
+          </DescriptionItem>
+        </DescriptionList>
+      )}
+      {loaded && (
+        <PaginatedDataTable
+          aria-label="Fleet software inventory"
+          itemLabel="nodes"
+          rows={tableRows}
+          rowLabel={(row) => row.node.name}
+          columns={[
+            {
+              id: "node",
+              header: "Node",
+              isRowHeader: true,
+              cell: (row) => row.node.name,
+            },
+            {
+              id: "current",
+              header: "Agent / HAProxy",
+              cell: (row) =>
+                `${row.observed?.build?.version || "Unknown"} / ${row.observed?.haproxy_version || "Unknown"}`,
+            },
+            {
+              id: "desired",
+              header: "Desired / previous",
+              cell: (row) =>
+                `${row.latest && active.has(row.latest.status) ? row.latest.target_version : "None"} / ${row.updater?.previous_version || "Unknown"}`,
+            },
+            {
+              id: "platform",
+              header: "Platform / protocol",
+              cell: (row) =>
+                row.observed?.build
+                  ? `${row.observed.build.platform} / ${row.observed.build.protocol}`
+                  : "Unknown",
+            },
+            {
+              id: "publisher",
+              header: "Signed release match",
+              cell: (row) => signedBuild(row)?.publisher || "Unknown",
+            },
+            {
+              id: "digest",
+              header: "Agent SHA-256",
+              cell: (row) =>
+                row.observed?.build ? (
+                  <code className="cv-haproxy-digest">
+                    {row.observed.build.executable_sha256}
+                  </code>
+                ) : (
+                  "Unknown"
+                ),
+            },
+            {
+              id: "freshness",
+              header: "Observation",
+              cell: (row) => currentStatus(row),
+            },
+            {
+              id: "health",
+              header: "HAProxy health",
+              cell: (row) => healthStatus(row),
+            },
+            {
+              id: "last_seen",
+              header: "Last seen",
+              cell: (row) =>
+                row.observed?.last_seen
+                  ? new Date(row.observed.last_seen).toLocaleString()
+                  : "Unknown",
+            },
+            {
+              id: "updater",
+              header: "Host updater",
+              cell: (row) =>
+                row.updater?.ready &&
+                Date.now() - Date.parse(row.updater.last_seen) < 90_000
+                  ? "Ready"
+                  : "Unavailable or not reporting",
+            },
+            {
+              id: "status",
+              header: "Update status",
+              cell: (row) => updateStatus(row),
+            },
+          ]}
+        />
+      )}
+      {cursor && (
+        <Button isLoading={loading} onPress={() => void loadMore()}>
+          Load more nodes
+        </Button>
+      )}
+    </Section>
+  );
+}
 
 export function HAProxySoftware({
   client,
@@ -286,6 +645,13 @@ export function HAProxySoftware({
             ]}
             isDisabled={!!pending || busy || !releases?.length}
           />
+          {releases?.find((release) => release.version === version) && (
+            <SignedReleaseDetails
+              release={releases.find((release) => release.version === version)!}
+              platform={node?.agent?.platform}
+              role="agent"
+            />
+          )}
           {planError && (
             <InlineTip variant="error" role="alert">
               {planError}
@@ -536,6 +902,13 @@ export function HAProxyManagerSoftware({
             ]}
             isDisabled={!!pending || busy || !releases.length}
           />
+          {releases.find((release) => release.version === version) && (
+            <SignedReleaseDetails
+              release={releases.find((release) => release.version === version)!}
+              platform={view?.observed.platform}
+              role="manager"
+            />
+          )}
           {plan && (
             <>
               <InlineTip variant={plan.eligible ? "info" : "warning"}>

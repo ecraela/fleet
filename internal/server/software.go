@@ -13,6 +13,7 @@ import (
 
 func (s *Server) configureSoftware() {
 	s.mux.HandleFunc("GET /v1/software/releases", s.authorizeCapability("haproxy.read", s.softwareReleases))
+	s.mux.HandleFunc("GET /v1/software/inventory", s.authorizeCapability("haproxy.read", s.softwareInventory))
 	s.mux.HandleFunc("GET /v1/software/manager", s.authorizeCapability("haproxy.read", s.installationSoftware))
 	s.mux.HandleFunc("GET /v1/software/manager/plan", s.authorizeCapability("haproxy.read", s.planInstallationSoftware))
 	s.mux.HandleFunc("POST /v1/software/manager", s.authorizeCapability("haproxy.manage", s.createInstallationSoftware))
@@ -27,6 +28,82 @@ func (s *Server) configureSoftware() {
 	s.mux.HandleFunc("GET /v1/host/software", s.hostDesiredInstallationSoftware)
 	s.mux.HandleFunc("POST /v1/host/software/heartbeat", s.hostHeartbeatInstallationSoftware)
 	s.mux.HandleFunc("POST /v1/host/software/{update}/status", s.hostReportInstallationSoftware)
+}
+
+type softwareInventoryNode struct {
+	Node             domain.Node             `json:"node"`
+	Observed         *store.AgentObservation `json:"observed"`
+	Updater          *software.Updater       `json:"updater"`
+	Latest           *software.Update        `json:"latest"`
+	TelemetryFresh   bool                    `json:"telemetry_fresh"`
+	ScrapeOK         bool                    `json:"scrape_ok"`
+	MetricsAvailable bool                    `json:"metrics_available"`
+}
+
+func (s *Server) softwareInventory(w http.ResponseWriter, r *http.Request, org string) {
+	inventory, ok := s.config.Store.(store.InventoryStore)
+	if !ok {
+		fail(w, 503, "inventory storage unavailable")
+		return
+	}
+	builds, ok := s.config.Store.(store.AgentBuildStore)
+	if !ok {
+		fail(w, 503, "agent build inventory unavailable")
+		return
+	}
+	softwareState, ok := s.config.Store.(store.SoftwareInventoryStore)
+	if !ok {
+		fail(w, 503, "software inventory unavailable")
+		return
+	}
+	nodes, next, err := inventory.ListNodesPage(r.Context(), org, r.URL.Query().Get("cursor"), store.FleetPageSize)
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	ids := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if node.RevokedAt == nil {
+			ids = append(ids, node.ID)
+		}
+	}
+	observations, err := builds.AgentBuilds(r.Context(), org, ids)
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	states, err := softwareState.SoftwareInventory(r.Context(), org, ids)
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	health := make([]FleetNode, len(nodes))
+	for i, node := range nodes {
+		health[i].Node = node
+	}
+	partial := s.fleetObservations(r.Context(), org, health) != nil
+	result := make([]softwareInventoryNode, 0, len(ids))
+	for i, node := range nodes {
+		if node.RevokedAt != nil {
+			continue
+		}
+		entry := softwareInventoryNode{Node: node}
+		if observation, found := observations[node.ID]; found {
+			entry.Observed = &observation
+		}
+		if state, found := states[node.ID]; found {
+			entry.Updater, entry.Latest = state.Updater, state.Latest
+		}
+		entry.TelemetryFresh = health[i].TelemetryFresh
+		entry.ScrapeOK = health[i].ScrapeOK
+		entry.MetricsAvailable = health[i].MetricsAvailable
+		result = append(result, entry)
+	}
+	var nextCursor any
+	if next != "" {
+		nextCursor = next
+	}
+	writeJSON(w, 200, map[string]any{"nodes": result, "next_cursor": nextCursor, "manager_build": s.buildInfo(), "partial": partial})
 }
 
 func (s *Server) softwareStorage(w http.ResponseWriter) (store.SoftwareStore, bool) {

@@ -23,7 +23,7 @@ def load_compatibility(path, version):
     return validate_compatibility({k: v for k, v in value.items() if k != 'version'}, version)
 
 
-def build(output, version, revision, image, compatibility_file):
+def build(output, version, revision, image, compatibility_file, notes_file):
     if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?', version):
         raise ValueError('An exact release tag is required')
     if not re.fullmatch(r'[a-f0-9]{40}', revision):
@@ -36,6 +36,9 @@ def build(output, version, revision, image, compatibility_file):
         raise ValueError('Commit and review source changes before building a release')
     check_legal()
     compatibility = load_compatibility(compatibility_file, version)
+    notes = Path(notes_file).read_text(encoding='utf-8').strip()
+    if not notes or len(notes) > 4096:
+        raise ValueError('Reviewed release notes must contain 1-4096 characters')
     # Native artifacts and Docker images must embed the same console bundle.
     subprocess.run(['pnpm', 'build'], cwd=ROOT / 'web', check=True)
     output.mkdir(parents=True, exist_ok=False)
@@ -54,7 +57,7 @@ def build(output, version, revision, image, compatibility_file):
         shutil.copyfile(ROOT / 'internal/webui/dist/legal' / name, output / name)
     manifest = {'schema': 1, 'repository': 'ecraela/fleet', 'version': version,
                 'revision': revision, 'protocol': 1, 'state_schema': 1, 'image': image,
-                'compatibility': compatibility, 'managed_upgrades': True,
+                'compatibility': compatibility, 'managed_upgrades': True, 'notes': notes,
                 'artifacts': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(output.iterdir())}}
     (output / 'release.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
 
@@ -66,5 +69,6 @@ if __name__ == '__main__':
     p.add_argument('--revision', required=True)
     p.add_argument('--image', required=True)
     p.add_argument('--compatibility-file', type=Path, required=True)
+    p.add_argument('--notes-file', type=Path, required=True)
     args = p.parse_args()
-    build(args.output.resolve(), args.version, args.revision, args.image, args.compatibility_file)
+    build(args.output.resolve(), args.version, args.revision, args.image, args.compatibility_file, args.notes_file)

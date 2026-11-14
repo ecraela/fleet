@@ -7,7 +7,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY . /src/
 RUN NODE_OPTIONS=--max-old-space-size=384 pnpm build
 
-FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine3.24 AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine3.24 AS build
 
 WORKDIR /src
 COPY go.mod go.sum ./

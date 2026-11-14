@@ -101,7 +101,7 @@ failure scenarios one at a time against disposable nodes.
 
 ## Build and test
 
-Use Go 1.26.10, Node.js 24+, pnpm 11.25.0 and Python 3.11+. The Dockerfile pins the
+Use Go 1.26.11, Node.js 24+, pnpm 11.25.0 and Python 3.11+. The Dockerfile pins the
 build environment. All Go and frontend package dependencies are public; the UI
 components are included in this repository.
 

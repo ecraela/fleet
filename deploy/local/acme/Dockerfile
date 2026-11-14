@@ -1,5 +1,5 @@
 # Local testing only. The Go module checksum database verifies this pinned release.
-FROM golang:1.26.10-alpine3.24 AS build
+FROM golang:1.26.11-alpine3.24 AS build
 RUN --mount=type=cache,target=/root/.cache/go-build \
     GOBIN=/out CGO_ENABLED=0 GOMAXPROCS=2 GOMEMLIMIT=256MiB \
     go install github.com/letsencrypt/pebble/v2/cmd/pebble@v2.10.1

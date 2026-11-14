@@ -45,6 +45,14 @@ func softwareContract(t *testing.T, db Store) {
 	if err != nil || first.Status != "queued" || first.AgentSHA256 != r.AgentSHA256 {
 		t.Fatal(first, err)
 	}
+	page, err := db.(SoftwareInventoryStore).SoftwareInventory(ctx, org, []string{node.ID, peer.ID})
+	if err != nil || page[node.ID].Updater == nil || page[node.ID].Latest == nil || page[node.ID].Latest.ID != first.ID {
+		t.Fatal("software inventory missing state", page, err)
+	}
+	foreignPage, err := db.(SoftwareInventoryStore).SoftwareInventory(ctx, foreign, []string{node.ID})
+	if err != nil || len(foreignPage) != 0 {
+		t.Fatal("software inventory leaked another tenant", foreignPage, err)
+	}
 	duplicate, err := s.CreateSoftwareUpdate(ctx, org, node.ID, r)
 	if err != nil || duplicate.ID != first.ID {
 		t.Fatal("idempotency", err)

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ecraela/fleet/internal/buildinfo"
 	"github.com/ecraela/fleet/internal/domain"
@@ -121,6 +122,45 @@ func TestSoftwarePlanDesiredStateAndObservedCompletion(t *testing.T) {
 	}
 	if got := nodeSoftwareRequest(f, identity, "GET", "/v1/identity/software", nil); got.Code != 200 || !strings.Contains(got.Body.String(), `"update":null`) {
 		t.Fatal("completed desired state", got.Code, got.Body.String())
+	}
+}
+
+func TestSoftwareInventoryIsTenantScoped(t *testing.T) {
+	f, node, _, _ := setupSoftwareTest(t)
+	foreignOrg := domain.NewID()
+	foreignCluster, err := f.store.CreateCluster(t.Context(), foreignOrg, "other tenant")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := secret()
+	if err := f.store.CreateEnrollmentToken(t.Context(), foreignOrg, foreignCluster.ID, digest(token), time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	foreignNode, err := f.store.Enroll(t.Context(), digest(token), domain.Node{ID: domain.NewID(), Name: "foreign"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.request("GET", "/v1/software/inventory", nil, false); got.Code != 401 {
+		t.Fatal("anonymous inventory", got.Code)
+	}
+	got := f.request("GET", "/v1/software/inventory", nil, true)
+	if got.Code != 200 {
+		t.Fatal(got.Code, got.Body.String())
+	}
+	var inventory struct {
+		Nodes []struct {
+			Node    domain.Node       `json:"node"`
+			Updater *software.Updater `json:"updater"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(got.Body.Bytes(), &inventory); err != nil || len(inventory.Nodes) != 1 || inventory.Nodes[0].Node.ID != node.ID || inventory.Nodes[0].Updater == nil {
+		t.Fatal("wrong tenant inventory", inventory, err)
+	}
+	if strings.Contains(got.Body.String(), foreignNode.ID) {
+		t.Fatal("foreign node leaked")
+	}
+	if got := f.request("GET", "/v1/software/inventory?cursor=bad", nil, true); got.Code != 400 {
+		t.Fatal("invalid cursor", got.Code)
 	}
 }
 

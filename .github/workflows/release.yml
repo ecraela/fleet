@@ -47,7 +47,7 @@ jobs:
         run: make web-audit
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: 1.26.10
+          go-version: 1.26.11
       - name: Install pinned backup test tools
         run: go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
       - name: Verify before publishing
@@ -90,7 +90,7 @@ jobs:
           RELEASE_REVISION: ${{ github.sha }}
           RELEASE_IMAGE: ghcr.io/ecraela/fleet@${{ steps.image.outputs.digest }}
         run: |
-          python3 scripts/release.py --output .build.local/release --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION" --image "$RELEASE_IMAGE" --compatibility-file "deploy/release-compatibility/$RELEASE_VERSION.json"
+          python3 scripts/release.py --output .build.local/release --version "$RELEASE_VERSION" --revision "$RELEASE_REVISION" --image "$RELEASE_IMAGE" --compatibility-file "deploy/release-compatibility/$RELEASE_VERSION.json" --notes-file "deploy/release-notes/$RELEASE_VERSION.md"
           python3 scripts/verify_release_images.py .build.local/release
           cosign sign --yes "$RELEASE_IMAGE"
           cosign sign-blob --yes --bundle .build.local/release/release.sigstore.json .build.local/release/release.json
