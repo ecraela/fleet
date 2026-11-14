@@ -63,7 +63,8 @@ def retain_demo_images(command, env):
 
 def compose(*args, check=True):
     folder = selected_state()
-    installation = (STATE / 'organization-id').read_text().strip()
+    installation_file = STATE / 'organization-id'
+    installation = installation_file.read_text().strip() if installation_file.exists() else None
     prefix = 'converge-haproxy_pair' if folder.name == installation else 'converge-haproxy_pair-' + folder.name
     env = dict(os.environ, HAPROXY_UID=str(os.getuid()), HAPROXY_GID=str(os.getgid()),
                HAPROXY_PAIR_STATE=str(folder), HAPROXY_PAIR_VOLUME_PREFIX=prefix)
