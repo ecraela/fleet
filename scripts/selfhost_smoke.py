@@ -590,6 +590,7 @@ def scenario(args, work, report):
         h = api.request(f'/v1/nodes/{node_id}/history?range=15m')
         return h if any(s['values'] for s in h['series']) else None
     historic = wait('historic metric points', history_ready)
+    candidate_schema = ctl.load(candidate[0] / 'selfhost.json')['database_schema']
     with traffic(ports, authority / 'ca.crt') as counts:
         transitions = [('upgrade', candidate), ('rollback', baseline)]
         if not publisher:
@@ -597,7 +598,7 @@ def scenario(args, work, report):
         report['database_schemas_after_transition'] = []
         for action, fixture in transitions:
             # Keep the new authenticated host tool for software rollback. The
-            # old installer predates the additive schema-20 compatibility rule.
+            # old installer may predate the additive database schema.
             host_command(candidate[0], action, '--directory', install, '--release', fixture[0],
                          '--version', fixture[1]['version'], *trust_args)
             wait('fresh telemetry after ' + action, api.fresh)
@@ -607,7 +608,7 @@ def scenario(args, work, report):
                                     '-d', 'haproxy_manager', '-Atc',
                                     'SELECT max(version) FROM hm_schema_migrations;').decode().strip()
             expected = ctl.load(install / 'deployment.json')['profile']['database_schema']
-            assert actual == str(expected) or (expected == 19 and actual == '20')
+            assert int(actual) == max(expected, candidate_schema), (action, actual, expected, candidate_schema)
             report['database_schemas_after_transition'].append(
                 {'action': action, 'version': fixture[1]['version'], 'database_schema': int(actual)})
         report['upgrade_and_rollback'] = True

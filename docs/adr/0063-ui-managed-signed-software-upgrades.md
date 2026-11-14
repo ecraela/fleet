@@ -63,6 +63,13 @@ release. Do not publish a release that requires an atomic fleet-wide switch.
 The release qualification record tests both orders and the mixed-version
 window. Storage migrations are separately qualified, forward-compatible
 transitions; software rollback never rewinds identity, journals or schema.
+Schema 21 adds software request, updater and event tables without changing
+existing tables. A manual rc.21-to-rc.22 upgrade applies it with the separate
+database owner. Rolling the manager binary back to rc.21 retains schema 21;
+the authenticated rc.22 host tool verifies that state and rc.21 must still
+serve its existing APIs and node cohort. The published-asset qualification
+must exercise this upgrade, rollback and re-upgrade on both Linux architectures
+before rc.22 is used in production.
 
 ## Rollout and recovery
 
