@@ -203,6 +203,13 @@ class Releases(unittest.TestCase):
         with self.assertRaises(ctl.InstallError):
             ctl.verify_release(path, 'v0.1.0', self.pub)
 
+    def test_signed_release_notes_are_bounded(self):
+        path, manifest = self.release(notes='Release notes')
+        self.assertEqual(ctl.verify_release(path, 'v0.1.0', self.pub)['notes'], 'Release notes')
+        path, _ = self.release(notes='x' * 4097)
+        with self.assertRaises(ctl.InstallError):
+            ctl.verify_release(path, 'v0.1.0', self.pub)
+
     def test_verification_authenticates_the_snapshot_that_is_parsed(self):
         path, original = self.release()
         actual_run = ctl.run

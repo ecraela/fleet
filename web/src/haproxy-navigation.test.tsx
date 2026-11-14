@@ -274,7 +274,7 @@ it("keeps settings tabs linkable and renders only the selected section", () => {
     expect(access).not.toContain("No agent versions yet");
     expect(access).not.toContain("Installation and recovery guide");
     const software = render("?settings_tab=software");
-    expect(software).toContain("No agent versions yet");
+    expect(software).toContain("Fleet software inventory");
     expect(software).not.toContain("Access settings panel");
     expect(software).not.toContain("Installation and recovery guide");
     const recovery = render("?settings_tab=recovery");

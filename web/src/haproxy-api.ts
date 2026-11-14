@@ -773,11 +773,48 @@ export interface HAProxySoftwareRelease {
   revision: string;
   manifest_sha256: string;
   publisher: string;
+  image: string;
+  protocol: number;
+  state_schema: number;
+  managed_upgrades: boolean;
+  notes?: string;
+  agent_digests: Record<string, string>;
+  manager_digests: Record<string, string>;
   platforms: string[];
   compatibility: {
     manager: { min: string; max: string };
     agent: { min: string; max: string };
   };
+}
+
+export interface HAProxySoftwareInventoryNode {
+  node: Pick<
+    HAProxyNode,
+    | "id"
+    | "organization_id"
+    | "cluster_id"
+    | "name"
+    | "created_at"
+    | "revoked_at"
+  >;
+  observed: {
+    build: HAProxyAgentBuild | null;
+    haproxy_version: string;
+    last_seen: string;
+    connected: boolean;
+  } | null;
+  updater: HAProxySoftwareUpdater | null;
+  latest: HAProxySoftwareUpdate | null;
+  telemetry_fresh: boolean;
+  scrape_ok: boolean;
+  metrics_available: boolean;
+}
+
+export interface HAProxySoftwareInventoryPage {
+  nodes: HAProxySoftwareInventoryNode[];
+  next_cursor: string | null;
+  manager_build: HAProxyAgentBuild;
+  partial: boolean;
 }
 
 export interface HAProxySoftwareUpdater {
@@ -1147,6 +1184,10 @@ export class HAProxyClient {
           !r ||
           typeof r.version !== "string" ||
           typeof r.publisher !== "string" ||
+          typeof r.manifest_sha256 !== "string" ||
+          typeof r.image !== "string" ||
+          !r.agent_digests ||
+          !r.manager_digests ||
           !Array.isArray(r.platforms) ||
           !r.compatibility?.manager ||
           !r.compatibility?.agent,
@@ -1157,6 +1198,35 @@ export class HAProxyClient {
         "HAProxy returned an invalid signed release catalog.",
       );
     return result.releases;
+  }
+
+  async softwareInventory(
+    cursor?: string,
+  ): Promise<HAProxySoftwareInventoryPage> {
+    const result = await this.send<HAProxySoftwareInventoryPage>(
+      `/software/inventory${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+    );
+    if (
+      !Array.isArray(result.nodes) ||
+      result.nodes.length > 100 ||
+      result.nodes.some(
+        (entry) =>
+          !entry?.node?.id ||
+          entry.node.organization_id !== this.organizationId ||
+          (entry.latest &&
+            (entry.latest.node_id !== entry.node.id ||
+              entry.latest.organization_id !== this.organizationId)),
+      ) ||
+      !(
+        result.next_cursor === null || typeof result.next_cursor === "string"
+      ) ||
+      typeof result.manager_build?.version !== "string"
+    )
+      throw new HAProxyError(
+        502,
+        "HAProxy returned invalid software inventory.",
+      );
+    return result;
   }
 
   async installationSoftware(): Promise<HAProxyInstallationSoftwareView> {

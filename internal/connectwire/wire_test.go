@@ -51,7 +51,7 @@ func TestGeographyUsesTheBoundedReadOnlyConnectorSurface(t *testing.T) {
 
 func TestSoftwareConnectorSurfaceExcludesHostUpdaterCredentials(t *testing.T) {
 	id := "00000000-0000-0000-0000-000000000001"
-	for _, path := range []string{"/v1/software/releases", "/v1/software/manager", "/v1/software/manager/plan", "/v1/nodes/" + id + "/software", "/v1/nodes/" + id + "/software/plan"} {
+	for _, path := range []string{"/v1/software/releases", "/v1/software/inventory", "/v1/software/manager", "/v1/software/manager/plan", "/v1/nodes/" + id + "/software", "/v1/nodes/" + id + "/software/plan"} {
 		if !Allowed("GET", path) || Allowed("DELETE", path) {
 			t.Fatal("software read route", path)
 		}

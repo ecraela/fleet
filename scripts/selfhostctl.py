@@ -36,7 +36,7 @@ import uuid
 import types
 
 
-AGENTCTL_SHA256 = '82d6792c864f2d6a0f2b92be1acd7f9497a03264cf8083f0e24a55c4722c17e0'
+AGENTCTL_SHA256 = '8cfb46d670d70e8de485016619584d73195786e4f743c20f43130d40f2e35f75'
 
 
 def load_agentctl():
@@ -135,7 +135,8 @@ def add_release_catalog(args):
              'state_schema': manifest['state_schema'], 'platforms': list(platforms),
              'agent_digests': agent_digests, 'manager_digests': manager_digests,
              'compatibility': manifest['compatibility'],
-             'managed_upgrades': manifest.get('managed_upgrades') is True}
+             'managed_upgrades': manifest.get('managed_upgrades') is True,
+             'notes': manifest.get('notes', '')}
     # Keep a host-owned offline bundle when a full signed release was imported.
     # The live manager only receives metadata through its read-only catalog.
     candidate = None

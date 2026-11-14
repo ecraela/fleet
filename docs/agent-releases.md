@@ -25,6 +25,9 @@ inclusive manager/agent version ranges are the input to managed-upgrade
 planning. Matching protocol numbers alone do not establish a safe rolling
 upgrade, and existing releases without signed ranges are treated as unknown by
 that planner. Manual signed installation and rollback remain available.
+The same signed manifest includes reviewed operator notes. The Software page
+shows these notes, publisher, compatibility ranges, and platform artifact
+checksums before an operator requests an update.
 
 The [distribution packaging](third-party.md) also signs
 the AGPL text, third-party notices, dependency inventory, matching project source

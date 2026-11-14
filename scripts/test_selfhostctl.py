@@ -79,6 +79,7 @@ class SelfHosted(unittest.TestCase):
         manifest['compatibility'] = {
             'manager': {'min': 'v0.1.0', 'max': 'v0.1.0'},
             'agent': {'min': 'v0.1.0', 'max': 'v0.1.0'}}
+        manifest['notes'] = 'Signed release notes for the operator.'
         (folder / 'release.json').write_text(json.dumps(manifest))
         ctl.command(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
                      '-in', folder / 'release.json', '-out', folder / 'release.sig'])
@@ -89,6 +90,7 @@ class SelfHosted(unittest.TestCase):
         catalog_path, catalog = ctl.ensure_release_catalog(root)
         self.assertEqual(len(catalog['releases']), 1)
         self.assertEqual(catalog['releases'][0]['manifest_sha256'], ctl.sha(folder / 'release.json'))
+        self.assertEqual(catalog['releases'][0]['notes'], manifest['notes'])
         self.assertEqual(catalog_path.stat().st_mode & 0o022, 0)
         compose = ctl.compose_spec(root, config, manifest, profile)['services']['manager']
         self.assertIn(f'{root}/catalog:/run/catalog:ro', compose['volumes'])
