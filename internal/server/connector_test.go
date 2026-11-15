@@ -172,6 +172,18 @@ func TestOutboundConnectorPairingTenancyPermissionsAndRevocation(t *testing.T) {
 	if w := request("POST", "/v1/clusters", `{"name":"Created through outbound connection"}`); w.Code != 201 {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	if w := request("GET", "/v1/software/fleet", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"updates"`) {
+		t.Fatal("fleet software read through connector", w.Code, w.Body.String())
+	}
+	if w := request("GET", "/v1/software/fleet/plan?version=invalid", ""); w.Code != 400 {
+		t.Fatal("fleet software plan through connector", w.Code, w.Body.String())
+	}
+	if w := request("POST", "/v1/software/fleet", `{}`); w.Code != 400 {
+		t.Fatal("fleet software request through connector", w.Code, w.Body.String())
+	}
+	if w := cloudRequest(t, relay, viewer, viewCSRF, cloudOrg, "POST", "/v1/software/fleet", `{}`); w.Code != 403 {
+		t.Fatal("viewer requested fleet update", w.Code)
+	}
 	for _, path := range []string{"/v1/local/session", "/v1/local/connector", "/v1/enroll", "/v1/identity/renew", "/v1/metrics/write", "/v3/services/haproxy/configuration/raw"} {
 		if w := request("POST", path, `{}`); w.Code != 404 {
 			t.Fatal("forbidden tunnel surface", path, w.Code)
