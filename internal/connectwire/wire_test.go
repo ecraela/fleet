@@ -51,12 +51,12 @@ func TestGeographyUsesTheBoundedReadOnlyConnectorSurface(t *testing.T) {
 
 func TestSoftwareConnectorSurfaceExcludesHostUpdaterCredentials(t *testing.T) {
 	id := "00000000-0000-0000-0000-000000000001"
-	for _, path := range []string{"/v1/software/releases", "/v1/software/inventory", "/v1/software/manager", "/v1/software/manager/plan", "/v1/nodes/" + id + "/software", "/v1/nodes/" + id + "/software/plan"} {
+	for _, path := range []string{"/v1/software/releases", "/v1/software/inventory", "/v1/software/fleet", "/v1/software/fleet/plan", "/v1/software/manager", "/v1/software/manager/plan", "/v1/nodes/" + id + "/software", "/v1/nodes/" + id + "/software/plan"} {
 		if !Allowed("GET", path) || Allowed("DELETE", path) {
 			t.Fatal("software read route", path)
 		}
 	}
-	for _, path := range []string{"/v1/software/manager", "/v1/software/manager/" + id + "/cancel", "/v1/nodes/" + id + "/software", "/v1/nodes/" + id + "/software/" + id + "/cancel"} {
+	for _, path := range []string{"/v1/software/fleet", "/v1/software/manager", "/v1/software/manager/" + id + "/cancel", "/v1/nodes/" + id + "/software", "/v1/nodes/" + id + "/software/" + id + "/cancel"} {
 		if !Allowed("POST", path) || Allowed("PUT", path) {
 			t.Fatal("software mutation route", path)
 		}
@@ -64,6 +64,11 @@ func TestSoftwareConnectorSurfaceExcludesHostUpdaterCredentials(t *testing.T) {
 	for _, path := range []string{"/v1/host/software", "/v1/host/software/heartbeat", "/v1/host/software/" + id + "/status", "/v1/identity/software", "/v1/identity/software/heartbeat"} {
 		if Allowed("GET", path) || Allowed("POST", path) {
 			t.Fatal("host software route exposed to connector", path)
+		}
+	}
+	for _, path := range []string{"/v1/software/fleet/plan", "/v1/software/fleet/", "/v1/software/fleet/" + id} {
+		if Allowed("POST", path) {
+			t.Fatal("unexpected fleet mutation route", path)
 		}
 	}
 }

@@ -141,9 +141,9 @@ export function HAProxyFleetSoftware({
       <>
         <Section layout="stack" title="Fleet software">
           <InlineTip>
-            This manager needs a two-step update before it can coordinate the
-            whole fleet. Install v0.1.0-rc.23 first, then v0.1.0-rc.24. Once
-            rc.24 is running, this page will show the fleet-wide release picker.
+            For the latest fleet-wide update path, install v0.1.0-rc.23 from
+            rc.22, then install v0.1.0-rc.25. Once rc.25 is running, this page
+            will show the fleet-wide release picker.
           </InlineTip>
         </Section>
         <HAProxyManagerSoftware client={client} bridgeOnly />
