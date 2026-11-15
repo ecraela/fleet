@@ -144,6 +144,28 @@ class HostUpdater(unittest.TestCase):
                 self.assertRaises(ctl.InstallError):
             ctl.stage_release(self.config, source, self.version, self.pub)
 
+    def test_native_cached_bundle_contains_every_signed_install_artifact(self):
+        self.config['mode'] = 'linux'
+        binary = b'signed synthetic agent'
+        (self.bundle / 'haproxy-agent-linux-amd64').write_bytes(binary)
+        self.manifest['artifacts']['haproxy-agent-linux-amd64'] = hashlib.sha256(binary).hexdigest()
+        for name in ctl.LEGAL_ARTIFACTS:
+            body = ('signed ' + name).encode()
+            (self.bundle / name).write_bytes(body)
+            self.manifest['artifacts'][name] = hashlib.sha256(body).hexdigest()
+        (self.bundle / 'release.json').write_text(json.dumps(self.manifest))
+        ctl.run(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                 '-in', self.bundle / 'release.json', '-out', self.bundle / 'release.sig'])
+        source = self.root / 'published-release'
+        self.bundle.rename(source)
+        with patch.object(ctl.platform, 'machine', return_value='x86_64'):
+            cached = ctl.signed_bundle(self.install, self.config, self.version, self.update['publisher'], self.pub, source)
+            for name in ctl.LEGAL_ARTIFACTS:
+                self.assertEqual((cached / name).read_bytes(), (source / name).read_bytes())
+            (cached / 'source.json').unlink()
+            with self.assertRaises(FileNotFoundError):
+                ctl.verify_cached_bundle(cached, self.config, self.version, self.update['publisher'], self.pub)
+
 
 class Releases(unittest.TestCase):
     def setUp(self):

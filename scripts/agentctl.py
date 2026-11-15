@@ -608,14 +608,22 @@ def signed_bundle(root, c, version, publisher, public_key=None, source=None):
         raise InstallError('Offline release bundle is not staged on this host')
     staging = Path(tempfile.mkdtemp(prefix='.bundle-', dir=root / 'bundles'))
     try:
-        names = ['release.json', 'release.sig' if public_key else 'release.sigstore.json', 'agentctl.py']
+        names = ['release.json', 'release.sig' if public_key else 'release.sigstore.json']
+        for name in names:
+            raw = regular(source / name, 1 << 20) if source is not None else release_asset(version, name, 1 << 20)
+            path = staging / name
+            path.write_bytes(raw)
+            path.chmod(0o600)
+        manifest, _ = _verify_release(staging, version, public_key)
+        names = ['agentctl.py']
         if c['mode'] == 'linux':
             arch = {'aarch64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())
             if arch not in ('amd64', 'arm64'):
                 raise InstallError('Unsupported Linux agent architecture')
             names.append('haproxy-agent-linux-' + arch)
+            names.extend(name for name in LEGAL_ARTIFACTS if name in manifest['artifacts'])
         for name in names:
-            maximum = MAX_BINARY if name.startswith('haproxy-agent-') else (1 << 20)
+            maximum = MAX_BINARY if name.startswith('haproxy-agent-') or name in LEGAL_ARTIFACTS else (1 << 20)
             raw = regular(source / name, maximum) if source is not None else release_asset(version, name, maximum)
             path = staging / name
             path.write_bytes(raw)
@@ -638,8 +646,9 @@ def verify_cached_bundle(bundle, c, version, publisher, public_key=None):
         if arch not in ('amd64', 'arm64'):
             raise InstallError('Unsupported Linux agent architecture')
         names.append('haproxy-agent-linux-' + arch)
+        names.extend(name for name in LEGAL_ARTIFACTS if name in manifest['artifacts'])
     for name in names:
-        maximum = MAX_BINARY if name.startswith('haproxy-agent-') else (1 << 20)
+        maximum = MAX_BINARY if name.startswith('haproxy-agent-') or name in LEGAL_ARTIFACTS else (1 << 20)
         if hashlib.sha256(regular(bundle / name, maximum)).hexdigest() != manifest['artifacts'].get(name):
             raise InstallError('Cached artifact differs from signed manifest')
     return manifest
