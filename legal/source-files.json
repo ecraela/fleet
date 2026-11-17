@@ -94,6 +94,7 @@
   "docs/migration-to-fleet.md",
   "docs/observability.md",
   "docs/operations.md",
+  "docs/production-readiness.md",
   "docs/providers/haproxy-dataplane.md",
   "docs/publication.md",
   "docs/releases/v0.1.0-rc.10.md",

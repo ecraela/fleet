@@ -69,7 +69,7 @@ jobs:
           mkdir -m 700 "$RUNNER_TEMP/anonymous-docker"
           printf '{}\n' > "$RUNNER_TEMP/anonymous-docker/config.json"
           echo "DOCKER_CONFIG=$RUNNER_TEMP/anonymous-docker" >> "$GITHUB_ENV"
-      - name: Signed install, live two-node traffic, upgrade, rollback and encrypted cold restore
+      - name: Signed install, native managed upgrades, live traffic and encrypted cold restore
         env:
           BASELINE_VERSION: ${{ inputs.baseline }}
           CANDIDATE_VERSION: ${{ inputs.candidate }}
