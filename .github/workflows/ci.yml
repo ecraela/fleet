@@ -72,9 +72,13 @@ jobs:
       metrics:
         image: victoriametrics/victoria-metrics:v1.154.1
         ports: ["58428:8428"]
+      logs:
+        image: victoriametrics/victoria-logs:v1.53.0
+        ports: ["59428:9428"]
     env:
       HAPROXY_TEST_DATABASE_URL: postgres://haproxy_manager:isolated-ci-database@localhost:55433/haproxy_manager_test?sslmode=disable
       HAPROXY_TEST_METRICS_URL: http://localhost:58428
+      HAPROXY_TEST_LOGS_URL: http://127.0.0.1:59428
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5

@@ -527,7 +527,11 @@ func (s *Server) applicationRequests(w http.ResponseWriter, r *http.Request, org
 	if c := f.before; c != nil {
 		q += fmt.Sprintf(` (observed_at_ms:<%d OR (observed_at_ms:=%d event_id:<%q))`, c.AtMS, c.AtMS, c.ID)
 	}
-	q += " | sort by (observed_at_ms desc, event_id desc) limit 11"
+	// LogsQL sorts strings naturally, but cursor comparisons are bytewise.
+	// Separate each character so digit runs cannot change the ordering, while
+	// preserving stored IDs and existing cursors.
+	q += ` | copy event_id as cursor_order | replace_regexp ("(.)", "x${1}") at cursor_order` +
+		` | sort by (observed_at_ms desc, cursor_order desc) limit 11 | delete cursor_order`
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	rows, err := s.logs.Query(ctx, q, f.start, f.end, 11)
