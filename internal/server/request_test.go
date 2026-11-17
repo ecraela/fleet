@@ -10,6 +10,9 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -58,6 +61,93 @@ func requestRow(f *fixture, rev domain.ApplicationRevision, node domain.Node) ma
 	return map[string]string{"organization_id": f.org, "cluster_id": f.cluster.ID, "application_id": rev.ApplicationID, "node_id": node.ID, "event_id": accesslog.EventID(domain.NewID(), 1), "observed_at_ms": strconvInt(time.Now().Add(-time.Second).UnixMilli()), "spec_digest": rev.Spec.Digest(), "server": "web", "method": "GET", "scheme": "https", "status": "503", "status_class": "5xx", "bytes": "16", "duration_ms": "25", "response_ms": "12", "connect_ms": "4", "queue_ms": "0", "termination": "--"}
 }
 func strconvInt(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestRequestPaginationWithRealLogStorage(t *testing.T) {
+	endpoint := os.Getenv("HAPROXY_TEST_LOGS_URL")
+	if endpoint == "" {
+		t.Skip("set HAPROXY_TEST_LOGS_URL to a disposable local VictoriaLogs instance")
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost") {
+		t.Fatal("the pagination fixture requires a disposable loopback log store")
+	}
+	f, rev, node, _ := requestFixture(t)
+	f.server.logs, err = accesslog.NewStorage(endpoint, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-5 * time.Second).UnixMilli()
+	var rows []map[string]any
+	var want []string
+	// Natural sorting disagrees with bytewise comparison for both these UUID
+	// prefixes and hexadecimal sequences crossing from decimal digits to a-f.
+	for _, boot := range []string{"10000000-0000-4000-8000-000000000000", "9000000a-0000-4000-8000-000000000000"} {
+		for sequence := uint64(1); sequence <= 24; sequence++ {
+			row := map[string]any{}
+			for k, v := range requestRow(f, rev, node) {
+				row[k] = v
+			}
+			id := accesslog.EventID(boot, sequence)
+			row["event_id"], row["observed_at_ms"], row["at_ms"] = id, at, at
+			row["kind"], row["message"] = "request", "request"
+			rows = append(rows, row)
+			want = append(want, id)
+		}
+	}
+	if err := f.server.logs.Insert(t.Context(), rows); err != nil {
+		t.Fatal(err)
+	}
+	end := time.Now().Unix() * 1000
+	filter := requestFilter{start: end - 15*60*1000, end: end}
+	q := requestScope(f.org, f.cluster.ID, rev.ApplicationID, filter) + " | sort by (observed_at_ms desc, event_id desc) limit 49"
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		indexed, err := f.server.logs.Query(t.Context(), q, filter.start, filter.end, 49)
+		if err == nil && len(indexed) == len(want) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("fixture did not become searchable: %v, %v", indexed, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	path := "/v1/clusters/" + f.cluster.ID + "/applications/" + rev.ApplicationID + "/requests"
+	var got []string
+	cursor := ""
+	for page := 0; page < 8; page++ {
+		query := url.Values{"end": {strconvInt(end)}}
+		if cursor != "" {
+			query.Set("before", cursor)
+		}
+		response := f.request("GET", path+"?"+query.Encode(), nil, true)
+		if response.Code != 200 {
+			t.Fatalf("page %d: HTTP %d: %s", page, response.Code, response.Body.String())
+		}
+		var result struct {
+			Requests   []RequestRecord `json:"requests"`
+			NextCursor string          `json:"next_cursor"`
+			EndMS      int64           `json:"end_ms"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.EndMS != end || len(result.Requests) == 0 || len(result.Requests) > 10 {
+			t.Fatalf("invalid frozen page %d: %+v; raw: %s", page, result, response.Body.String())
+		}
+		for _, row := range result.Requests {
+			got = append(got, row.ID)
+		}
+		cursor = result.NextCursor
+		if cursor == "" {
+			break
+		}
+	}
+	slices.Sort(want)
+	slices.Reverse(want)
+	if cursor != "" || !slices.Equal(got, want) {
+		t.Fatalf("pagination lost, duplicated or reordered tied timestamps: got %d rows, want %d; cursor remains: %t", len(got), len(want), cursor != "")
+	}
+}
 
 func TestRequestTelemetryUnavailableRemainsTenantBound(t *testing.T) {
 	f, rev, _, _ := requestFixture(t)

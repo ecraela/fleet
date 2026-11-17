@@ -60,7 +60,8 @@ To download the example candidate:
 ```bash
 version=vMAJOR.MINOR.PATCH
 mkdir -p "release-$version"
-for asset in release.json release.sigstore.json agentctl.py haproxy-agent-linux-amd64 haproxy-agent-linux-arm64; do
+for asset in release.json release.sigstore.json agentctl.py haproxy-agent-linux-amd64 haproxy-agent-linux-arm64 \
+  LICENSE THIRD_PARTY_NOTICES.txt dependencies.json source.tar.gz source.json; do
   curl --fail --location --proto '=https' --tlsv1.2 --output "release-$version/$asset" \
     "https://github.com/ecraela/fleet/releases/download/$version/$asset"
 done
@@ -76,6 +77,11 @@ steps, including verifying `agentctl.py` before executing it. Python 3.11+,
 curl and Cosign 3.0.2+ are prerequisites; no GitHub login is needed. Docker installs additionally
 require Docker Compose v2; native installs require Linux/systemd, root for the
 installer, and an unprivileged `haproxy-agent` service account.
+
+Keep all five packaging files in the authenticated bundle. Native installation
+and managed updates verify and retain them along with the executable. See the
+[production qualification checklist](production-readiness.md) for the RC.25
+updater bridge and the release evidence required before rollout.
 
 An offline distributor may instead sign the manifest with Ed25519 and deliver
 `release.sig`. Provision its public key through an independent trusted channel

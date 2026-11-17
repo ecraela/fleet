@@ -29,6 +29,8 @@ jobs:
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     timeout-minutes: 30
+    env:
+      HAPROXY_PUBLISHED_WORK: /var/lib/ecraela-fleet-qualification-work/published
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -37,7 +39,10 @@ jobs:
       - name: Install pinned backup tools
         run: go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
       - name: Install checksum-pinned Cosign
-        run: bash scripts/install_cosign.sh
+        run: |
+          bash scripts/install_cosign.sh
+          # The hardened updater cannot use the runner's home-directory PATH.
+          sudo install -m 0755 "$RUNNER_TEMP/cosign-bin/cosign" /usr/local/bin/cosign
       - name: Confirm public distribution and download exact release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,13 +74,15 @@ jobs:
           mkdir -m 700 "$RUNNER_TEMP/anonymous-docker"
           printf '{}\n' > "$RUNNER_TEMP/anonymous-docker/config.json"
           echo "DOCKER_CONFIG=$RUNNER_TEMP/anonymous-docker" >> "$GITHUB_ENV"
-      - name: Signed install, live two-node traffic, upgrade, rollback and encrypted cold restore
+      - name: Signed install, native managed upgrades, live traffic and encrypted cold restore
         env:
           BASELINE_VERSION: ${{ inputs.baseline }}
           CANDIDATE_VERSION: ${{ inputs.candidate }}
         run: |
+          # Keep updater configuration outside its private /tmp and hidden /home.
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "$(dirname "$HAPROXY_PUBLISHED_WORK")"
           python3 scripts/selfhost_smoke.py \
-            --native-agent --work "$RUNNER_TEMP/published-install" \
+            --native-agent --work "$HAPROXY_PUBLISHED_WORK" \
             --baseline-release "$RUNNER_TEMP/published-baseline" --baseline-version "$BASELINE_VERSION" \
             --candidate-release "$RUNNER_TEMP/published-candidate" --candidate-version "$CANDIDATE_VERSION"
       - name: Retain sanitized release qualification evidence
@@ -83,6 +90,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: published-release-qualification-${{ runner.arch }}
-          path: ${{ runner.temp }}/published-install/latest.json
+          path: ${{ env.HAPROXY_PUBLISHED_WORK }}/latest.json
           if-no-files-found: ignore
           retention-days: 7

@@ -128,15 +128,16 @@ class MaintenanceRequestTest(unittest.TestCase):
                 accepted=True;return {}
             if accepted: return {'maintenance':{'status':'completed'}}
             reads+=1
-            cfg={'document':{'backends':[]},'observed_at_ms':100000,'artifact_id':'owned','version':reads}
-            d={'configuration':cfg,'observed_at_ms':100000,'generation':str(reads),'servers':[{'health':'UP','check_status':'L7OK'}]}
+            version=1 if not bodies else 2
+            cfg={'document':{'backends':[]},'observed_at_ms':100000+reads*1000,'artifact_id':'owned','version':version}
+            d={'configuration':cfg,'observed_at_ms':100000+reads*1000,'generation':str(version),'servers':[{'health':'UP','check_status':'L7OK'}]}
             return {'target':{'discovery':d},'controller':{'discovery':d},'binding_id':'bound','reason_code':'','maintenance':{'id':'held','status':'maintenance'}}
         def poll(label, operation, seconds=30):
-            for _ in range(3):
+            for _ in range(15):
                 if value:=operation(): return value
             self.fail('retry did not settle: '+label)
         lab=SimpleNamespace(api=SimpleNamespace(request=request))
-        with patch('requests.wait_for',side_effect=poll),patch('requests.time.time',return_value=100):
+        with patch('requests.wait_for',side_effect=poll),patch('requests.time.time',side_effect=lambda:100+reads):
             maintenance(lab,{'id':'node','name':'local node'},'rejoin')
         return bodies
 
@@ -145,6 +146,49 @@ class MaintenanceRequestTest(unittest.TestCase):
         self.assertEqual([b['expected_version'] for b in bodies],[1,2])
         self.assertNotEqual(bodies[0]['request_id'],bodies[1]['request_id'])
         self.assertEqual(bodies[1]['maintenance_id'],'held')
+
+    def rejoin_observations(self, observations, terminal='completed'):
+        writes = []
+        samples = iter(observations)
+        now = [100]
+        def request(path, body=None):
+            if body is not None:
+                self.assertFalse(writes, 'accepted maintenance must never be replayed')
+                writes.append(body)
+                return {}
+            if writes:
+                return {'maintenance': {'status': terminal, 'error_code': 'target_changed'}}
+            generation, observed = next(samples)
+            now[0] = observed / 1000
+            cfg = dict(document={'backends': []}, artifact_id='owned', version=1,
+                       observed_at_ms=observed)
+            d = dict(generation=generation, observed_at_ms=observed, configuration=cfg,
+                     servers=[dict(health='UP', check_status='L7OK')])
+            return dict(target=dict(discovery=d), controller=dict(discovery=d),
+                        binding_id='bound', reason_code='', maintenance=None)
+        def poll(label, operation, seconds=30):
+            for _ in range(len(observations)):
+                if value := operation(): return value
+            raise TimeoutError(label)
+        lab = SimpleNamespace(api=SimpleNamespace(request=request))
+        with patch('requests.wait_for', side_effect=poll), patch('requests.time.time', side_effect=lambda: now[0]):
+            maintenance(lab, dict(id='node', name='local node'), 'rejoin')
+        return writes
+
+    def test_rejoin_restarts_the_window_when_reload_changes_the_runtime(self):
+        rows = [('old', 100000), ('old', 104000), ('new', 105000),
+                ('new', 109000), ('new', 110000)]
+        writes = self.rejoin_observations(rows)
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0]['expected_generation'], 'new')
+
+    def test_repeated_cached_observation_cannot_pass_the_rejoin_window(self):
+        with self.assertRaises(TimeoutError):
+            self.rejoin_observations([('same', 109000)] * 8)
+
+    def test_accepted_attention_is_reported_without_replaying_the_rejoin(self):
+        with self.assertRaisesRegex(RuntimeError, 'target_changed'):
+            self.rejoin_observations([('same', 105000), ('same', 110000)], 'attention')
 
     def test_permission_failures_are_never_retried(self):
         with self.assertRaises(HTTPError) as error:self.exercise(403)

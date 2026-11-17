@@ -24,7 +24,9 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 
+import legal
 import selfhostctl as ctl
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,9 +118,11 @@ class API:
         return result if valid else None
 
 
-def sign_fixture(folder, version, revision, image, signing):
+def sign_fixture(folder, version, revision, image, signing, packaging):
     for name in ('agentctl.py', 'selfhostctl.py'):
         shutil.copyfile(ROOT / 'scripts' / name, folder / name)
+    for name in ctl.trust.LEGAL_ARTIFACTS:
+        shutil.copyfile(packaging / name, folder / name)
     shutil.copyfile(ROOT / 'deploy/selfhost.json', folder / 'selfhost.json')
     manifest = {'schema': 1, 'repository': ctl.trust.REPOSITORY, 'version': version, 'revision': revision,
                 'protocol': 1, 'state_schema': 1, 'image': image, 'managed_upgrades': True,
@@ -141,6 +145,8 @@ def fixture_releases(work, base, reuse=False):
     ctl.command(['openssl', 'genpkey', '-algorithm', 'ED25519', '-out', signing])
     signing.chmod(0o600)
     ctl.command(['openssl', 'pkey', '-in', signing, '-pubout', '-out', public])
+    packaging = work / 'packaging'
+    legal.bundle(packaging)
     if not base:
         base = 'ecraela-selfhost-fixture-base:local'
         ctl.command(['docker', 'build', '-t', base, ROOT], timeout=900)
@@ -212,7 +218,7 @@ func main() {
                 ctl.command(['docker', 'rm', cid])
             for name in ('manager', 'agent'):
                 compile_arch(name, other_arch)
-            result.append(sign_fixture(folder, version, revision, image, signing))
+            result.append(sign_fixture(folder, version, revision, image, signing, packaging))
             continue
         for name in ('manager', 'agent'):
             compile_arch(name, arch)
@@ -229,7 +235,7 @@ func main() {
         tag = 'ecraela-selfhost-fixture:' + version
         ctl.command(['docker', 'build', '--network=none', '-t', tag, context])
         image = ctl.command(['docker', 'image', 'inspect', '--format', '{{.Id}}', tag]).decode().strip()
-        result.append(sign_fixture(folder, version, revision, image, signing))
+        result.append(sign_fixture(folder, version, revision, image, signing, packaging))
     signing.unlink()
     return result, public
 
@@ -252,6 +258,69 @@ def agent_lifecycle(config, profile, baseline, candidate, trust_args):
                      '--version', release[1]['version'], *trust_args, agent=True)
         if ctl.trust.identity(config['state_dir']) != before:
             raise ctl.Error('Agent lifecycle changed its identity or private key')
+
+
+def native_restart_cooldown():
+    interval = json.loads(ctl.command([
+        'busctl', '--json=short', 'get-property', 'org.freedesktop.systemd1',
+        '/org/freedesktop/systemd1/unit/ecraela_2dhaproxy_2dagent_2eservice',
+        'org.freedesktop.systemd1.Unit', 'StartLimitIntervalUSec']))
+    value = interval.get('data') if isinstance(interval, dict) else None
+    if (not isinstance(interval, dict) or interval.get('type') != 't' or
+            type(value) is not int or not 0 <= value <= 60_000_000):
+        raise ctl.Error('Native qualification requires a bounded systemd restart interval')
+    # Direct installation and rollback already restarted this real service.
+    # Space deliberate test transitions rather than resetting its failure guard.
+    if value:
+        time.sleep(value / 1_000_000 + 0.1)
+
+
+def managed_native_agent_lifecycle(work, install, config, profile, baseline, candidate, trust_args):
+    """Use the browser API and installed systemd updater, including the old-updater bridge."""
+    if not all(manifest.get('managed_upgrades') is True for _, manifest in (baseline, candidate)):
+        return {'status': 'unsupported_by_baseline_or_candidate'}
+    api = API(install)
+    api.login((work / 'administrator.password').read_text().strip())
+    before = ctl.trust.identity(config['state_dir'])
+    node = before['node_id']
+    root = Path(config['install_dir'])
+    # The authenticated candidate tool stages complete bundles even when the
+    # installed baseline updater predates the native packaging fix. The actual
+    # service must still start with the baseline's signed updater bytes.
+    host_command(candidate[0], 'enable-updates', '--config', profile,
+                 '--release', baseline[0], '--version', baseline[1]['version'],
+                 '--manager-url', api.base, *trust_args, agent=True)
+    ctl.command(['systemctl', 'stop', 'ecraela-haproxy-updater.timer', 'ecraela-haproxy-updater.service'])
+    script = root / 'updater/agentctl.py'
+    if ctl.hashlib.sha256(script.read_bytes()).hexdigest() != baseline[1]['artifacts']['agentctl.py']:
+        raise ctl.Error('Managed qualification did not start with the signed baseline updater')
+    host_command(candidate[0], 'stage-release', '--config', profile,
+                 '--release', candidate[0], '--version', candidate[1]['version'], *trust_args, agent=True)
+    ctl.command(['systemctl', 'start', 'ecraela-haproxy-updater.service'])
+    transitions = []
+    previous = baseline[1]['version']
+    base = f'/v1/nodes/{node}/software'
+    for action, target in [('upgrade', candidate), ('rollback', baseline), ('upgrade', candidate)]:
+        native_restart_cooldown()
+        wait('fresh native agent before managed change', api.fresh)
+        plan = api.request(base + '/plan?version=' + target[1]['version'] + '&action=' + action, local=True)['plan']
+        if not plan['eligible']:
+            raise ctl.Error('Native managed agent preflight refused: ' + plan.get('reason', 'unknown'))
+        update = api.request(base, {'request_id': str(uuid.uuid4()), 'action': action,
+                                   'version': target[1]['version'], 'expected_version': previous}, local=True)['update']
+        since = time.time()
+        ctl.command(['systemctl', 'start', 'ecraela-haproxy-updater.service'])
+        ctl.trust.wait_healthy(config, target[1], since, before, 45)
+        wait('fresh HAProxy scrape after managed native change', api.fresh)
+        updates = api.request(base, local=True)['updates']
+        observed = next((row for row in updates if row['id'] == update['id']), {})
+        if observed.get('status') != 'succeeded' or ctl.trust.identity(config['state_dir']) != before:
+            raise ctl.Error('Native managed change did not preserve identity and report success')
+        if ctl.hashlib.sha256(script.read_bytes()).hexdigest() != target[1]['artifacts']['agentctl.py']:
+            raise ctl.Error('Native managed change did not activate the signed host updater')
+        transitions.append({'action': action, 'version': target[1]['version'], 'status': 'succeeded'})
+        previous = target[1]['version']
+    return {'status': 'passed', 'transitions': transitions, 'baseline_updater_verified': True}
 
 
 @contextmanager
@@ -289,7 +358,7 @@ def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
         if trust_args:
             command += ['--fixture-publisher', trust_args[1]]
         result = subprocess.run(list(map(str, command)), stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, timeout=180, check=False)
+                                stderr=subprocess.PIPE, timeout=360, check=False)
         if result.returncode:
             try:
                 failure = json.loads(result.stdout[:4096])
@@ -299,7 +368,13 @@ def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
             if isinstance(message, str):
                 raise ctl.Error('Native agent qualification failed: ' + message[:2048])
             raise ctl.Error('Native agent worker failed before reporting a curated error')
-        return
+        try:
+            evidence = json.loads(result.stdout[:16384])['native_agent']
+            if evidence['direct_install_upgrade_rollback_restart'] is not True or not isinstance(evidence['managed_updates'], dict):
+                raise ValueError('Incomplete native qualification evidence')
+        except (ValueError, KeyError, TypeError):
+            raise ctl.Error('Native agent worker did not return complete qualification evidence') from None
+        return evidence
 
     def compose(*options):
         return ctl.command(['docker', 'compose', '--project-directory', work, '--env-file', '/dev/null',
@@ -308,7 +383,9 @@ def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
     public = Path('/etc/ecraela-fleet-qualification')
     state = Path('/var/lib/ecraela-fleet-qualification')
     unit = Path('/etc/systemd/system/ecraela-haproxy-agent.service')
-    if any(p.exists() for p in (public, state, unit)):
+    updater_units = [Path('/etc/systemd/system') / ('ecraela-haproxy-updater.' + suffix)
+                     for suffix in ('timer', 'service')]
+    if any(p.exists() or p.is_symlink() for p in (public, state, unit, *updater_units)):
         raise ctl.Error('Refusing to replace an existing native agent installation')
     user = 'fleet-agent-ci'
     try:
@@ -352,9 +429,18 @@ def native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
             since = time.time()
             ctl.command(['systemctl', 'restart', 'ecraela-haproxy-agent.service'])
             ctl.trust.wait_healthy(config, baseline[1], since, before, 45)
+            managed = managed_native_agent_lifecycle(work, install, config, work / 'native-agent.json',
+                                                     baseline, candidate, trust_args)
         if ctl.trust.identity(state) != before or ctl.trust.identity(original) != before:
             raise ctl.Error('Native agent restart changed the original identity or key')
+        return {'direct_install_upgrade_rollback_restart': True, 'managed_updates': managed}
     finally:
+        for updater in updater_units:
+            expected = public / 'software/updater' / updater.name
+            if updater.is_symlink() and updater.resolve() == expected.resolve():
+                subprocess.run(['systemctl', 'disable', '--now', updater.name],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+                updater.unlink(missing_ok=True)
         subprocess.run(['systemctl', 'disable', '--now', 'ecraela-haproxy-agent.service'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         unit.unlink(missing_ok=True)
@@ -592,6 +678,20 @@ def scenario(args, work, report):
     historic = wait('historic metric points', history_ready)
     candidate_schema = ctl.load(candidate[0] / 'selfhost.json')['database_schema']
     with traffic(ports, authority / 'ca.crt') as counts:
+        if args.native_agent:
+            # The baseline agent's signed range may not accept a newer manager.
+            # Exercise both agent directions while that manager is still on
+            # the baseline; the original Docker identity resumes before the
+            # independent manager upgrade and recovery scenarios.
+            if all(manifest.get('managed_upgrades') is True for _, manifest in (baseline, candidate)):
+                # Keep catalog files owned by the ordinary qualification runner;
+                # the privileged native worker only reads installation state.
+                for folder, manifest in (baseline, candidate):
+                    host_command(candidate[0], 'catalog-add', '--directory', install,
+                                 '--release', folder, '--version', manifest['version'], *trust_args)
+            report['native_agent'] = native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
+            wait('fresh telemetry after native agent recovery', api.fresh)
+            report['linux_systemd_agent_install_upgrade_rollback_restart'] = True
         transitions = [('upgrade', candidate), ('rollback', baseline)]
         if not publisher:
             transitions.append(('upgrade', candidate))
@@ -620,10 +720,6 @@ def scenario(args, work, report):
             agent_lifecycle(config, work / ('agent-' + letter + '.json'), baseline, candidate, trust_args)
             wait('fresh telemetry after agent rollback ' + letter, api.fresh)
         report['docker_agent_install_upgrade_rollback'] = True
-        if args.native_agent:
-            native_agent_lifecycle(args, work, install, baseline, candidate, trust_args)
-            wait('fresh telemetry after native agent recovery', api.fresh)
-            report['linux_systemd_agent_install_upgrade_rollback_restart'] = True
         if broken:
             failed = host_command(candidate[0], 'upgrade', '--directory', install, '--release', broken[0],
                                   '--version', broken[1]['version'], *trust_args, '--timeout', 8, check=False)
@@ -803,8 +899,9 @@ def main():
                     raise ctl.Error('Native agent release artifact checksum differs: ' + name)
             releases.append((folder, manifest))
         trust_args = ['--public-key', args.fixture_publisher] if args.fixture_publisher else []
-        native_agent_lifecycle(args, args.work.resolve(), args.work.resolve() / 'customer',
-                               *releases, trust_args)
+        evidence = native_agent_lifecycle(args, args.work.resolve(), args.work.resolve() / 'customer',
+                                          *releases, trust_args)
+        print(json.dumps({'native_agent': evidence}), flush=True)
         return
     if args.fixture_publisher:
         p.error('Fixture publisher is restricted to the native CI worker')

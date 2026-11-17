@@ -21,14 +21,17 @@ create an application and inspect its traffic.
 Fleet is pre-1.0 software under [AGPL-3.0-only](LICENSE), with
 [optional commercial licensing and paid support](LICENSING.md).
 
-The current qualified preview is [v0.1.0-rc.16](https://github.com/ecraela/fleet/releases/tag/v0.1.0-rc.16).
-Clean installation, Docker/Linux agent upgrades, rollback and encrypted recovery
-passed on native Ubuntu 24.04 AMD64 and ARM64 hosts. The release page includes
-the test reports. Authenticate the exact release before installing; see
-[release verification](docs/agent-releases.md).
+Published previews have passed clean installation, Docker/Linux agent upgrades,
+rollback and encrypted recovery on Ubuntu 24.04 AMD64 and ARM64 hosts. Select an
+exact tag with a matching [published qualification run](https://github.com/ecraela/fleet/actions/workflows/release-qualification.yml).
+RC.25 has a native managed-updater limitation that requires the bridge described
+in the production checklist below. Authenticate the exact release before
+installing; see [release verification](docs/agent-releases.md).
 
 The tested pilot shape is Ubuntu 24.04 with Docker Engine and Compose; native
 Linux agents are also tested. Small-demo results are not capacity guarantees.
+Use the [production qualification checklist](docs/production-readiness.md) when
+preparing the next release and its installation-wide rollout.
 
 ## What it does
 

@@ -29,6 +29,8 @@ jobs:
     name: Clean standalone Linux Docker installation and recovery
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      HAPROXY_SELFHOST_WORK: /var/lib/ecraela-fleet-qualification-work/standalone
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -43,13 +45,16 @@ jobs:
           make web-install
           go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
       - name: Signed install, upgrade, failed-start rollback and encrypted cold restore
-        run: python3 scripts/selfhost_smoke.py --native-agent --work "$RUNNER_TEMP/haproxy-clean-install"
+        run: |
+          # The real updater keeps PrivateTmp and ProtectHome enabled.
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "$(dirname "$HAPROXY_SELFHOST_WORK")"
+          python3 scripts/selfhost_smoke.py --native-agent --work "$HAPROXY_SELFHOST_WORK"
       - name: Retain sanitized standalone lifecycle evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: self-hosted-installation-measurements
-          path: ${{ runner.temp }}/haproxy-clean-install/latest.json
+          path: ${{ env.HAPROXY_SELFHOST_WORK }}/latest.json
           if-no-files-found: ignore
   verify:
     name: Source checks
@@ -67,9 +72,13 @@ jobs:
       metrics:
         image: victoriametrics/victoria-metrics:v1.154.1
         ports: ["58428:8428"]
+      logs:
+        image: victoriametrics/victoria-logs:v1.53.0
+        ports: ["59428:9428"]
     env:
       HAPROXY_TEST_DATABASE_URL: postgres://haproxy_manager:isolated-ci-database@localhost:55433/haproxy_manager_test?sslmode=disable
       HAPROXY_TEST_METRICS_URL: http://localhost:58428
+      HAPROXY_TEST_LOGS_URL: http://127.0.0.1:59428
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -87,6 +96,41 @@ jobs:
       - run: make check test build
       - name: Check reachable Go vulnerabilities
         run: make vuln
+  managed-upgrades:
+    name: Host-owned managed manager and agent upgrades under traffic
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      HAPROXY_MANAGED_WORK: /var/lib/ecraela-fleet-managed-qualification
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24.19.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: 1.26.11
+      - name: Install pinned frontend toolchain
+        run: |
+          npm install --global pnpm@11.25.0
+          make web-install
+      - name: Request signed manager and agent upgrades and rollback through host services
+        run: |
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sudo --preserve-env=PATH,GITHUB_ACTIONS python3 scripts/managed_upgrade_smoke.py --with-agents --work "$HAPROXY_MANAGED_WORK"
+      - name: Export sanitized root-owned evidence
+        if: always()
+        run: |
+          if sudo test -f "$HAPROXY_MANAGED_WORK/latest.json"; then
+            sudo install -m 0644 "$HAPROXY_MANAGED_WORK/latest.json" "$RUNNER_TEMP/managed-upgrade-result.json"
+          fi
+      - name: Retain sanitized managed upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: managed-upgrade-measurements
+          path: ${{ runner.temp }}/managed-upgrade-result.json
+          if-no-files-found: error
   lifecycle:
     name: Real Docker and Linux agent lifecycle
     runs-on: ubuntu-latest

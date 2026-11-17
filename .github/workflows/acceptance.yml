@@ -154,6 +154,12 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Sustained traffic, component failures and isolated fresh-storage restore
         run: python3 scripts/hardening.py all --seconds 60 --rps 80 --workers 8 --live-metrics
+      - name: Capture control-plane logs on failure
+        if: failure()
+        run: |
+          if [ -f deploy/local/state.local/pair/active-organization ]; then
+            PYTHONPATH=scripts python3 -c 'from pair import compose; compose("logs", "--tail=300", "manager", "agent-a", "agent-b", "agent-entrypoint")'
+          fi
       - name: Retain sanitized measurements only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
