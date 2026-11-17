@@ -61,6 +61,10 @@ upgrade, rollback and re-upgrade through the browser API and verifies that each
 target's signed updater activates. The native scenario runs before changing the
 manager, so the baseline's signed peer range remains valid during agent rollback.
 
+The native fixture reads systemd's configured restart interval and waits between
+deliberate managed transitions. It retains the real restart-rate protection;
+qualification never resets failed state or disables that guard to force a pass.
+
 ## Installation witness
 
 - [ ] Record the installed manager, ingest, relay and agent versions and updater

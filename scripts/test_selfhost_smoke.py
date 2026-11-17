@@ -131,6 +131,8 @@ class ManagedNativeQualification(unittest.TestCase):
                     if args[1] == 'enable-updates':
                         script.write_bytes(contents['v0.1.0'])
                 def systemctl(command):
+                    if command[0] == 'busctl':
+                        return b'{"type":"t","data":10000000}'
                     if command[:2] == ['systemctl', 'start']:
                         script.write_bytes(contents[current['version']])
                 with patch.object(smoke, 'API', return_value=api), \
@@ -138,6 +140,7 @@ class ManagedNativeQualification(unittest.TestCase):
                         patch.object(smoke.ctl, 'command', side_effect=systemctl), \
                         patch.object(smoke.ctl.trust, 'identity', return_value=identity), \
                         patch.object(smoke.ctl.trust, 'wait_healthy'), \
+                        patch.object(smoke.time, 'sleep') as cooldown, \
                         patch.object(smoke, 'wait', side_effect=lambda label, function: function()):
                     if status == 'succeeded':
                         evidence = smoke.managed_native_agent_lifecycle(work, work / 'installation', config,
@@ -146,6 +149,8 @@ class ManagedNativeQualification(unittest.TestCase):
                         self.assertEqual([row['action'] for row in evidence['transitions']],
                                          ['upgrade', 'rollback', 'upgrade'])
                         self.assertEqual(script.read_bytes(), contents['v0.1.1'])
+                        self.assertEqual(cooldown.call_count, 3)
+                        cooldown.assert_called_with(10.1)
                     else:
                         with self.assertRaisesRegex(smoke.ctl.Error, 'report success'):
                             smoke.managed_native_agent_lifecycle(work, work / 'installation', config,
@@ -158,6 +163,32 @@ class ManagedNativeQualification(unittest.TestCase):
                                                           Path('/profile'), release, release, [])
         self.assertEqual(result['status'], 'unsupported_by_baseline_or_candidate')
         api.assert_not_called()
+
+
+class NativeRestartWindow(unittest.TestCase):
+    def test_uses_the_host_interval_without_disabling_the_guard(self):
+        for microseconds in (0, 10_000_000):
+            with self.subTest(microseconds=microseconds), \
+                    patch.object(smoke.ctl, 'command', return_value=json.dumps({'type': 't', 'data': microseconds}).encode()) as command, \
+                    patch.object(smoke.time, 'sleep') as sleep:
+                smoke.native_restart_cooldown()
+                self.assertIn('get-property', command.call_args.args[0])
+                self.assertEqual(command.call_count, 1)
+                if microseconds:
+                    sleep.assert_called_once_with(10.1)
+                else:
+                    sleep.assert_not_called()
+
+    def test_malformed_or_unbounded_intervals_do_not_sleep(self):
+        for value in ([], {}, {'type': 's', 'data': '10s'}, {'type': 't', 'data': True},
+                      {'type': 't', 'data': -1}, {'type': 't', 'data': 60_000_001},
+                      {'type': 't', 'data': [10_000_000]}):
+            with self.subTest(value=value), \
+                    patch.object(smoke.ctl, 'command', return_value=json.dumps(value).encode()), \
+                    patch.object(smoke.time, 'sleep') as sleep:
+                with self.assertRaisesRegex(smoke.ctl.Error, 'bounded systemd restart interval'):
+                    smoke.native_restart_cooldown()
+                sleep.assert_not_called()
 
 
 class FixturePackaging(unittest.TestCase):

@@ -260,6 +260,21 @@ def agent_lifecycle(config, profile, baseline, candidate, trust_args):
             raise ctl.Error('Agent lifecycle changed its identity or private key')
 
 
+def native_restart_cooldown():
+    interval = json.loads(ctl.command([
+        'busctl', '--json=short', 'get-property', 'org.freedesktop.systemd1',
+        '/org/freedesktop/systemd1/unit/ecraela_2dhaproxy_2dagent_2eservice',
+        'org.freedesktop.systemd1.Unit', 'StartLimitIntervalUSec']))
+    value = interval.get('data') if isinstance(interval, dict) else None
+    if (not isinstance(interval, dict) or interval.get('type') != 't' or
+            type(value) is not int or not 0 <= value <= 60_000_000):
+        raise ctl.Error('Native qualification requires a bounded systemd restart interval')
+    # Direct installation and rollback already restarted this real service.
+    # Space deliberate test transitions rather than resetting its failure guard.
+    if value:
+        time.sleep(value / 1_000_000 + 0.1)
+
+
 def managed_native_agent_lifecycle(work, install, config, profile, baseline, candidate, trust_args):
     """Use the browser API and installed systemd updater, including the old-updater bridge."""
     if not all(manifest.get('managed_upgrades') is True for _, manifest in (baseline, candidate)):
@@ -286,6 +301,7 @@ def managed_native_agent_lifecycle(work, install, config, profile, baseline, can
     previous = baseline[1]['version']
     base = f'/v1/nodes/{node}/software'
     for action, target in [('upgrade', candidate), ('rollback', baseline), ('upgrade', candidate)]:
+        native_restart_cooldown()
         wait('fresh native agent before managed change', api.fresh)
         plan = api.request(base + '/plan?version=' + target[1]['version'] + '&action=' + action, local=True)['plan']
         if not plan['eligible']:
