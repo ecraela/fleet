@@ -29,6 +29,8 @@ jobs:
     name: Clean standalone Linux Docker installation and recovery
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      HAPROXY_SELFHOST_WORK: /var/lib/ecraela-fleet-qualification/standalone
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
@@ -43,13 +45,16 @@ jobs:
           make web-install
           go install filippo.io/age/cmd/age@v1.2.1 filippo.io/age/cmd/age-keygen@v1.2.1
       - name: Signed install, upgrade, failed-start rollback and encrypted cold restore
-        run: python3 scripts/selfhost_smoke.py --native-agent --work "$RUNNER_TEMP/haproxy-clean-install"
+        run: |
+          # The real updater keeps PrivateTmp and ProtectHome enabled.
+          sudo install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "$(dirname "$HAPROXY_SELFHOST_WORK")"
+          python3 scripts/selfhost_smoke.py --native-agent --work "$HAPROXY_SELFHOST_WORK"
       - name: Retain sanitized standalone lifecycle evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: self-hosted-installation-measurements
-          path: ${{ runner.temp }}/haproxy-clean-install/latest.json
+          path: ${{ env.HAPROXY_SELFHOST_WORK }}/latest.json
           if-no-files-found: ignore
   verify:
     name: Source checks
@@ -92,7 +97,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      HAPROXY_MANAGED_WORK: /tmp/fleet-managed-upgrades
+      HAPROXY_MANAGED_WORK: /var/lib/ecraela-fleet-managed-qualification
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
