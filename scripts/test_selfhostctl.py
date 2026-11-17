@@ -1,5 +1,6 @@
 """Release, recovery and backup failure contracts; no Docker daemon needed."""
 import json
+import os
 from pathlib import Path
 import shutil
 import tarfile
@@ -74,6 +75,89 @@ class SelfHosted(unittest.TestCase):
         (folder / 'selfhost.json').write_text(json.dumps({**profile, 'database_schema': 23}))
         with self.assertRaises(ctl.Error):
             ctl.release(folder, manifest['version'], self.pub)
+
+    def test_new_public_catalog_is_readable_with_a_private_operator_umask(self):
+        root = self.root / 'private-installation'
+        root.mkdir(mode=0o700)
+        previous = os.umask(0o077)
+        try:
+            path, _ = ctl.ensure_release_catalog(root)
+        finally:
+            os.umask(previous)
+        self.assertEqual(path.parent.stat().st_mode & 0o777, 0o755)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(root.stat().st_mode & 0o777, 0o700)
+
+    def recovery_fixture(self):
+        baseline, old, storage = self.signed()
+        root, config, history = self.installation(old, storage)
+        ctl.retain(root, ctl.release(baseline, old['version'], self.pub)[0])
+        target_folder, target, target_storage = self.signed('v0.1.1')
+        target['artifacts']['haproxy-manager-linux-amd64'] = 'e' * 64
+        (target_folder / 'release.json').write_text(json.dumps(target))
+        ctl.command(['openssl', 'pkeyutl', '-sign', '-inkey', self.key, '-rawin',
+                     '-in', target_folder / 'release.json', '-out', target_folder / 'release.sig'])
+        retained = ctl.retain(root, ctl.release(target_folder, target['version'], self.pub)[0])
+        (root / 'updater').mkdir(mode=0o700)
+        ctl.trust.private_json(root / 'updater/profile.json', {
+            'schema': 1, 'manager_url': ctl.manager_update_origin(config), 'public_key': str(self.pub)})
+        update = {'id': '22345678-1234-4234-8234-123456789abc',
+                  'organization_id': history['identity']['organization_id'],
+                  'status': 'needs_attention', 'error_code': 'manifest_mismatch',
+                  'expected_version': old['version'], 'target_version': target['version'],
+                  'publisher': 'ed25519:' + history['trust'], 'platform': 'linux/amd64',
+                  'manifest_sha256': ctl.sha(target_folder / 'release.json'),
+                  'target_revision': target['revision'], 'manager_sha256': 'e' * 64}
+        return root, config, history, retained, update
+
+    def test_failed_host_verification_recovers_only_after_authentication_and_health(self):
+        root, config, history, _, update = self.recovery_fixture()
+        organization = history['identity']['organization_id']
+        with patch.object(ctl, 'manager_updater_client', return_value=(object(), 'https://localhost:18443', 'fixture', organization)), \
+                patch.object(ctl, 'manager_updater_request', side_effect=[{'update': update}, {}]) as request, \
+                patch.object(ctl, 'manager_resource_preflight'), patch.object(ctl, 'Engine') as engine:
+            ctl.recover(SimpleNamespace(directory=root, timeout=5))
+            engine.return_value.healthy.assert_called_once_with(history['current'], 5)
+            engine.return_value.switch.assert_not_called()
+            engine.return_value.stop.assert_not_called()
+            self.assertEqual(request.call_args.args[-3:], ('POST',
+                '/v1/host/software/' + update['id'] + '/status', {'status': 'recovered', 'error_code': ''}))
+        self.assertEqual(ctl.load(root / 'deployment.json'), history)
+        self.assertEqual(ctl.state_identity(root), history['identity'])
+
+    def test_host_recovery_refuses_wrong_operation_and_changed_signed_target(self):
+        root, _, history, _, update = self.recovery_fixture()
+        organization = history['identity']['organization_id']
+        for change in ({'organization_id': '32345678-1234-4234-8234-123456789abc'},
+                       {'status': 'activating'}, {'error_code': 'activation_failed'},
+                       {'expected_version': 'v0.0.9'}, {'target_version': 'v0.1.0'},
+                       {'publisher': 'ed25519:' + '0' * 64}, {'manifest_sha256': '0' * 64},
+                       {'manager_sha256': '0' * 64}, {'target_revision': '0' * 40}):
+            with self.subTest(change=change), \
+                    patch.object(ctl, 'manager_updater_client', return_value=(object(), 'https://localhost:18443', 'fixture', organization)), \
+                    patch.object(ctl, 'manager_updater_request', return_value={'update': {**update, **change}}) as request, \
+                    patch.object(ctl, 'manager_resource_preflight'), patch.object(ctl, 'Engine') as engine:
+                with self.assertRaises(ctl.Error):
+                    ctl.recover(SimpleNamespace(directory=root, timeout=5))
+                self.assertEqual(request.call_count, 1)
+                engine.assert_not_called()
+        self.assertEqual(ctl.load(root / 'deployment.json'), history)
+
+    def test_host_recovery_never_acknowledges_missing_signature_or_unhealthy_baseline(self):
+        root, _, history, target, update = self.recovery_fixture()
+        organization = history['identity']['organization_id']
+        for failure in ('health', 'signature'):
+            if failure == 'signature':
+                (target / 'release.sig').unlink()
+            with self.subTest(failure=failure), \
+                    patch.object(ctl, 'manager_updater_client', return_value=(object(), 'https://localhost:18443', 'fixture', organization)), \
+                    patch.object(ctl, 'manager_updater_request', return_value={'update': update}) as request, \
+                    patch.object(ctl, 'manager_resource_preflight'), patch.object(ctl, 'Engine') as engine:
+                engine.return_value.healthy.side_effect = ctl.Error('unhealthy baseline')
+                with self.assertRaises((ctl.Error, OSError)):
+                    ctl.recover(SimpleNamespace(directory=root, timeout=5))
+                self.assertEqual(request.call_count, 1)
+        self.assertEqual(ctl.load(root / 'deployment.json'), history)
 
     def test_catalog_import_requires_a_signed_exact_release_and_is_visible_to_manager(self):
         folder, manifest, profile = self.signed()

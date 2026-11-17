@@ -1,9 +1,40 @@
 # Production qualification
 
-This checklist prepares the next release after `v0.1.0-rc.25`. It does not mark
-an unpublished candidate or an installed fleet as qualified. Record exact source,
+RC.26's published-assets qualification passed, but subsequent isolated failure
+testing found a pre-activation host-recovery gap. RC.27 prepares its repair;
+neither a source fix nor an isolated lab qualifies the unchanged pilot. Record exact source,
 signed artifacts and results for the intended Ubuntu 24.04 amd64/arm64 deployment.
 Other host, HAProxy and networking combinations require their own evidence.
+
+The owner has explicitly left the pilot rollout and 48-hour soak pending.
+Do not use existing pilot credentials or change pilot services to close this
+checklist. Isolated test credentials and runtimes are separate from that hold.
+
+## RC.26 evidence and follow-on recovery fix — 17 November 2026
+
+RC.26 source `cb4fc45f3d0699090f83fc8b34243417e5277b59` passed
+[source/lifecycle CI](https://github.com/ecraela/fleet/actions/runs/44106347990),
+[two-node acceptance/hardening](https://github.com/ecraela/fleet/actions/runs/44106348245),
+the [signed release workflow](https://github.com/ecraela/fleet/actions/runs/44115613995)
+and both [published-assets architecture jobs](https://github.com/ecraela/fleet/actions/runs/44118886965).
+The independently authenticated manifest SHA-256 is
+`b1fd045676ef2f4c9c10933493d286b92700bec9c091deb376c3b999f644f9a4`;
+the image is `ghcr.io/ecraela/fleet@sha256:633c1ab850bc3361f8d2efda023dfad73b49a3689079c266089c20c6cf9af5e5`.
+Actual native managed upgrade/rollback/re-upgrade and encrypted cold recovery
+passed on both architectures with original identities and keys preserved;
+1,593 serving requests had zero failures. Private downloaded reports are retained
+beyond Actions retention. The pilot checkpoint was retrieved and authenticated
+off-host and restored into isolated fresh storage; the clone remains stopped.
+
+An additional disposable local test withheld a target signature. The manager
+host correctly refused activation, preserved its baseline and dispatched no agent
+update; the installation paused at its manager step. Restoring the signature did
+not unblock a fresh request: the child remained `needs_attention`, while the old
+host recovery command required a local pending transaction that never existed.
+RC.27's proposed host recovery closes that gap using authenticated recovery of a
+verified unchanged baseline, without editing journals or manufacturing a pending
+marker. It also fixes fresh catalog permissions under a restrictive umask.
+These changes do not alter RC.26's immutable published artifacts.
 
 ## Release candidate
 

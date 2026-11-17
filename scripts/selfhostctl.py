@@ -97,6 +97,9 @@ def ensure_release_catalog(root):
     directory = root / 'catalog'
     if not directory.exists():
         directory.mkdir(mode=0o755)
+        # Only public signed metadata is mounted here. An operator's restrictive
+        # umask must not hide it from the unprivileged manager container.
+        directory.chmod(0o755)
     info = directory.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022:
         raise Error('Release catalog directory must be a non-writable directory')
@@ -1104,12 +1107,61 @@ def change(args):
         print(json.dumps({'result': args.action, 'version': manifest['version']}))
 
 
+def recover_unactivated_manager(args, root, c, history):
+    """Resolve host verification failure without inventing a local transaction."""
+    if not history.get('current') or history.get('restored_stopped'):
+        raise Error('Only an active retained installation can recover host verification')
+    if state_identity(root) != history['identity']:
+        raise Error('Installation identity changed; automatic recovery is refused')
+    profile = load(root / 'updater/profile.json')
+    if (not isinstance(profile, dict) or set(profile) != {'schema', 'manager_url', 'public_key'} or
+            profile['schema'] != 1 or trust.update_origin(profile['manager_url']) != manager_update_origin(c)):
+        raise Error('Invalid manager updater profile')
+    key = Path(profile['public_key']) if profile['public_key'] else None
+    current = history['current']
+    signed, storage, publisher = release(root / 'releases' / current['version'], current['version'], key)
+    if signed != current or storage != history['profile'] or publisher != history['trust']:
+        raise Error('Retained baseline differs from the installed signed release')
+    client, origin, token, organization = manager_updater_client(root, c)
+    response = manager_updater_request(client, origin, token, organization, 'GET', '/v1/host/software')
+    update = response.get('update')
+    if (not isinstance(update, dict) or update.get('organization_id') != organization or
+            not re.fullmatch(r'[0-9a-f-]{36}', str(update.get('id', ''))) or
+            update.get('status') != 'needs_attention' or
+            update.get('error_code') not in ('resource_unavailable', 'peer_incompatible', 'download_failed',
+                                             'signature_invalid', 'manifest_mismatch') or
+            update.get('expected_version') != current['version'] or
+            update.get('target_version') == current['version'] or
+            not trust.VERSION.fullmatch(str(update.get('target_version', ''))) or
+            update.get('publisher') != ('ed25519:' + publisher if key else publisher)):
+        raise Error('No unactivated host verification failure matches this installed baseline')
+    bundle, target, target_storage = manager_bundle(root, update['target_version'], update['publisher'], key)
+    if (hashlib.sha256(trust.regular(bundle / 'release.json', 65536)).hexdigest() != update.get('manifest_sha256') or
+            target['revision'] != update.get('target_revision') or
+            update.get('platform') not in ('linux/amd64', 'linux/arm64') or
+            target['artifacts'].get('haproxy-manager-' + update['platform'].replace('/', '-')) != update.get('manager_sha256')):
+        raise Error('Repaired release differs from the authorized signed target')
+    compatible(storage, target_storage)
+    manager_resource_preflight(root)
+    Engine(root, c).healthy(current, args.timeout)
+    if state_identity(root) != history['identity']:
+        raise Error('Installation identity changed during host recovery')
+    # The normal authenticated host transition closes the failed child. The
+    # parent remains paused; a new operator request must pass a fresh plan.
+    manager_updater_request(client, origin, token, organization, 'POST',
+                            '/v1/host/software/' + update['id'] + '/status',
+                            {'status': 'recovered', 'error_code': ''})
+    print(json.dumps({'result': 'recovered', 'version': current['version'],
+                      'activation_performed': False}))
+
+
 def recover(args):
     root = private_directory(args.directory)
     with locked(root):
         c, h = configuration(root), load(root / 'deployment.json')
         if not h.get('pending'):
-            raise Error('No interrupted installation operation')
+            recover_unactivated_manager(args, root, c, h)
+            return
         if h['pending'].get('action') not in ('install', 'upgrade', 'rollback'):
             raise Error('An incomplete restore stays stopped; repeat restoration into a fresh directory')
         if state_identity(root) != h['identity']:
