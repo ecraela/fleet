@@ -25,15 +25,34 @@ TRAFFIC_LOG_FORMAT = GEO_LOG_FORMAT.replace('"cv4 ', '"cv5 ', 1)[:-1] + ' %[var(
 
 def maintenance(lab, node, action):
     path = f"/v1/nodes/{node['id']}/maintenance"
+    stable_target = None
     def fresh():
+        nonlocal stable_target
         v = lab.api.request(path)
         d = v['controller'].get('discovery') or {}
         cfg = d.get('configuration') or {}
         target = v['target'].get('discovery') or {}
         if not target.get('generation') or not d.get('generation') or not cfg.get('artifact_id') or cfg.get('version') is None:
+            stable_target = None
             return None
         healthy = action != 'rejoin' or ((target.get('configuration') or {}).get('document') and not (target.get('configuration') or {}).get('error_code') and not target.get('error_code') and time.time()*1000-target.get('observed_at_ms',0)<5000 and all(s['health']=='UP' and s.get('check_status','').removeprefix('* ') in ('L4OK','L6OK','L7OK','L7OKC') for s in target.get('servers',[])))
-        return v if not v['reason_code'] and cfg.get('document') and time.time()*1000-cfg.get('observed_at_ms', 0) < 5000 and healthy else None
+        if v['reason_code'] or not cfg.get('document') or time.time()*1000-cfg.get('observed_at_ms', 0) >= 5000 or not healthy:
+            stable_target = None
+            return None
+        if action == 'rejoin':
+            # DPA can publish its new saved configuration before HAProxy finishes
+            # reloading. Bind the explicit rejoin only after fresh observations
+            # agree on the runtime and artifact for the full health window.
+            saved = target['configuration']
+            key = (target['generation'], saved.get('artifact_id'), saved.get('version'))
+            observed = target['observed_at_ms']
+            if not stable_target or stable_target[0] != key or observed < stable_target[2]:
+                stable_target = (key, observed, observed)
+                return None
+            stable_target = (key, stable_target[1], observed)
+            if observed - stable_target[1] < 5000:
+                return None
+        return v
     def submit():
         v = fresh()
         if not v: return False
