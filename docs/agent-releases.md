@@ -219,6 +219,16 @@ If recovery fails, the marker stays visible for local intervention. Do not
 delete identities, re-enroll or restore stale journals to bypass it. Inspect
 `journalctl -u ecraela-haproxy-agent` or the agent's Docker logs locally.
 
+For manager host verification failures before activation, RC.27's authenticated
+`selfhostctl.py recover --directory /srv/ecraela-fleet` also handles an active
+`needs_attention` receipt without a local pending transaction. Repair the cause
+first. Recovery verifies the retained signed baseline, repaired exact target,
+original identity, available resources and running manager/ingest health before
+reporting recovery through the host API. It leaves the parent paused and performs
+no activation; plan a fresh operator request afterward. This path refuses
+ambiguous activation failures and incomplete restores. An older published host
+tool does not acquire this behavior merely by downloading a newer target.
+
 ## Qualification
 
 `make agent-releases` (Converge: `make haproxy-agent-releases`) tests signed

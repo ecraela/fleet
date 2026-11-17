@@ -134,6 +134,34 @@ def main():
 
         with smoke.traffic(ports, authority / 'ca.crt') if ports else nullcontext(None) as counts:
             if args.with_agents:
+                smoke.wait('fresh cohort before host verification failure', api.fresh)
+            identity_before = ctl.state_identity(install)
+            failed = api.request('/v1/software/manager', {
+                'request_id': str(uuid.uuid4()), 'action': 'upgrade',
+                'version': candidate[1]['version'], 'expected_version': baseline[1]['version']})['update']
+            signature = install / 'releases' / candidate[1]['version'] / 'release.sig'
+            withheld = signature.with_suffix('.withheld-for-negative-test')
+            signature.rename(withheld)
+            try:
+                try:
+                    host('systemctl', 'start', 'ecraela-fleet-manager-updater.service')
+                except ctl.Error:
+                    pass
+                else:
+                    raise ctl.Error('Host update accepted a target without its signature')
+            finally:
+                withheld.rename(signature)
+            updates = api.request('/v1/software/manager')['updates']
+            observed = next(row for row in updates if row['id'] == failed['id'])
+            if observed['status'] != 'needs_attention' or ctl.load(install / 'deployment.json').get('pending'):
+                raise ctl.Error('Unactivated host verification failure was not preserved')
+            host('python3', '-I', candidate[0] / 'selfhostctl.py', 'recover', '--directory', install)
+            observed = next(row for row in api.request('/v1/software/manager')['updates'] if row['id'] == failed['id'])
+            if observed['status'] != 'recovered' or ctl.state_identity(install) != identity_before or \
+                    ctl.load(install / 'deployment.json')['current']['version'] != baseline[1]['version']:
+                raise ctl.Error('Host verification recovery changed the baseline or its identity')
+            report['unactivated_host_failure_recovery'] = True
+            if args.with_agents:
                 def agent_change(version, action, previous):
                     smoke.wait('fresh agent cohort before change', api.fresh)
                     base = f'/v1/nodes/{node_id}/software'

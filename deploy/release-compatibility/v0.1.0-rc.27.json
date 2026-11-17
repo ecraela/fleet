@@ -1,0 +1,5 @@
+{
+  "version": "v0.1.0-rc.27",
+  "manager": { "min": "v0.1.0-rc.25", "max": "v0.1.0-rc.27" },
+  "agent": { "min": "v0.1.0-rc.25", "max": "v0.1.0-rc.27" }
+}
