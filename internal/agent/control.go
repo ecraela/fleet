@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 )
 
 type journalEntry struct {
@@ -153,7 +154,11 @@ func (j *operationJournal) recover(ctx context.Context, runtime haproxyruntime.C
 // management must never block the telemetry collector or HAProxy's serving path.
 func controlLoop(ctx context.Context, c Config, trust *x509.CertPool) {
 	for ctx.Err() == nil {
-		_ = controlSession(ctx, c, trust)
+		started := time.Now()
+		if err := controlSession(ctx, c, trust); err != nil && ctx.Err() == nil {
+			// Report only bounded status metadata, never transport messages or keys.
+			log.Printf("control session ended: code=%s duration_ms=%d", status.Code(err), time.Since(started).Milliseconds())
+		}
 		timer := time.NewTimer(2 * time.Second)
 		select {
 		case <-ctx.Done():

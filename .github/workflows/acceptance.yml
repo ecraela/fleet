@@ -119,7 +119,7 @@ jobs:
         if: failure()
         run: |
           make logs
-          if [ -f deploy/local/state.local/pair/operators.json ]; then
+          if [ -f deploy/local/state.local/pair/active-organization ]; then
             python3 scripts/pair.py logs
           fi
       - name: Stop isolated demo
