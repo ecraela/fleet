@@ -8,6 +8,7 @@
 **/compose.env
 **/*.log
 .git
+.direnv
 
 **/node_modules
 internal/webui/dist/*

@@ -110,6 +110,8 @@
   "docs/self-hosted-installation.md",
   "docs/third-party.md",
   "docs/traffic-rules.md",
+  "flake.lock",
+  "flake.nix",
   "go.mod",
   "go.sum",
   "internal/accesslog/accesslog_test.go",

@@ -4,6 +4,32 @@ Run commands from the Ecraela Fleet repository root unless a section says otherw
 The two-node lab defaults to standalone mode. Set `HAPROXY_PAIR_STANDALONE=0`
 only when intentionally enabling the Converge development overlay.
 
+## Development shell
+
+With Nix and direnv installed and direnv hooked into your shell, run
+`direnv allow` once from this repository. The pinned flake supplies Go, Node.js
+24, pnpm, Python, PostgreSQL 18 tools, age, Docker/Compose clients and build
+tools. It is independent of Converge. It starts no services or containers and
+does not select a Docker context. On macOS, start your existing Docker VM
+separately when running a container scenario.
+
+The Go bootstrap tool follows the exact toolchain declared in `go.mod`; pnpm
+uses the version declared in `web/package.json` when running in `web`. Their
+first invocation may download the selected versions. The shell optionally loads
+your ignored `.env`; credentials and local direnv state stay out of Git and
+Docker build contexts. No database URL or Converge login is configured for you.
+
+```sh
+direnv allow
+make web-install
+make format check test build
+```
+
+The test target uses an isolated local PostgreSQL cluster unless an explicit
+test database is supplied. Linux/systemd acceptance still needs a disposable
+Linux host. See [Contributing](../CONTRIBUTING.md#build-environment) for the
+same workflow without Nix and for additional code-generation requirements.
+
 ## Traffic and management topology
 
 For repeatable load, failure and full node-key recovery tests, see the
