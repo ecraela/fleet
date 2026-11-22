@@ -1,14 +1,15 @@
 # Production qualification
 
 RC.26's published-assets qualification passed, but subsequent isolated failure
-testing found a pre-activation host-recovery gap. RC.27 prepares its repair;
-neither a source fix nor an isolated lab qualifies the unchanged pilot. Record exact source,
+testing found a pre-activation host-recovery gap. RC.28 contains its repair and
+passed published-assets qualification on both Linux architectures. That evidence
+does not qualify the unchanged pilot. Record exact source,
 signed artifacts and results for the intended Ubuntu 24.04 amd64/arm64 deployment.
 Other host, HAProxy and networking combinations require their own evidence.
 
-The owner has explicitly left the pilot rollout and 48-hour soak pending.
-Do not use existing pilot credentials or change pilot services to close this
-checklist. Isolated test credentials and runtimes are separate from that hold.
+There is no completion receipt for the RC.28 pilot rollout or its fresh 48-hour
+soak. The earlier owner decision held pilot changes; isolated test credentials
+and runtimes are separate from that hold.
 
 ## RC.26 evidence and follow-on recovery fix — 17 November 2026
 
@@ -31,28 +32,47 @@ host correctly refused activation, preserved its baseline and dispatched no agen
 update; the installation paused at its manager step. Restoring the signature did
 not unblock a fresh request: the child remained `needs_attention`, while the old
 host recovery command required a local pending transaction that never existed.
-RC.27's proposed host recovery closes that gap using authenticated recovery of a
-verified unchanged baseline, without editing journals or manufacturing a pending
-marker. It also fixes fresh catalog permissions under a restrictive umask.
+The recovery change, published in RC.28, closes that gap using authenticated
+recovery of a verified unchanged baseline, without editing journals or
+manufacturing a pending marker. It also fixes fresh catalog permissions under a
+restrictive umask.
 These changes do not alter RC.26's immutable published artifacts.
 
-## Release candidate
+## RC.28 published release — 22 November 2026
 
-- [ ] Select an exact candidate tag and source commit containing native updater
+RC.28 source `851204310f7eb282272c54a1fc284cfb2cff2498` passed
+[source/lifecycle CI](https://github.com/ecraela/fleet/actions/runs/45072389101),
+[two-node acceptance/hardening](https://github.com/ecraela/fleet/actions/runs/45072389203),
+the [signed release workflow](https://github.com/ecraela/fleet/actions/runs/45077138346),
+and both [published-assets architecture jobs](https://github.com/ecraela/fleet/actions/runs/45078072100).
+The public [RC.28 prerelease](https://github.com/ecraela/fleet/releases/tag/v0.1.0-rc.28)
+has a Sigstore-authenticated manifest SHA-256 of
+`322d29fd0860796868d564f159c231b9583cf00e9e712919565691a0868b8157`
+and exact signed image
+`ghcr.io/ecraela/fleet@sha256:59cda07f07f0e96f51c9460a9c1decbeb4bd986e52617385fef1de6ef578688e`.
+Published RC.25-to-RC.28 installation, native managed upgrade/rollback/re-upgrade,
+encrypted cold restore and identity preservation passed on amd64 and arm64.
+Together, the two runs served 1,580 requests with zero failures. The sanitized
+reports are retained privately beyond Actions artifact retention. The pilot
+rollout, linked-console witness and fresh 48-hour soak remain pending.
+
+## Release candidate checklist
+
+- [x] Select an exact candidate tag and source commit containing native updater
       fix `19d4d09bcb96d331a242b7ff67a38c1d935ffd88` and the qualification changes.
-- [ ] Run `make web-install`, then `make format check test build` and `make vuln`.
-- [ ] Require source CI, two-node acceptance/hardening, standalone recovery and
+- [x] Run `make web-install`, then `make format check test build` and `make vuln`.
+- [x] Require source CI, two-node acceptance/hardening, standalone recovery and
       the **Host-owned managed manager and agent upgrades under traffic** job to pass
       for that same source commit. A skipped or cancelled job is not a pass.
-- [ ] Add the exact candidate's reviewed operator notes and compatibility entry
+- [x] Add the exact candidate's reviewed operator notes and compatibility entry
       under `deploy/release-notes/` and `deploy/release-compatibility/`. Start with
       the tested RC.25-to-candidate transition; widen the peer range only after
       exercising each additional transition. Include the management interruption
       and the old native updater bridge below in the signed notes.
-- [ ] Publish through the signed release workflow. Authenticate the candidate's
+- [x] Publish through the signed release workflow. Authenticate the candidate's
       Sigstore workflow identity, manifest and exact image digest before executing
       any downloaded tool. Preserve the authenticated baseline for recovery.
-- [ ] Run the **Published Fleet release qualification** workflow from the
+- [x] Run the **Published Fleet release qualification** workflow from the
       candidate's source, with baseline `v0.1.0-rc.25` and the exact candidate tag.
       Both Ubuntu architecture jobs must pass. Retain the downloaded evidence
       outside the short-lived Actions artifact window.
@@ -141,4 +161,5 @@ and rollbacks reported success; 90 synthetic HTTP/HTTPS requests completed with
 zero serving failures. The disposable containers and identities were cleaned up.
 This checks the preparation tooling, not public release artifacts, the new native
 managed scenario, installation-wide browser behavior or production capacity.
-Those release and installation gates remain pending above.
+That historical preparation result did not establish the later published release
+or installation gates; use the RC.28 evidence and open witness items above.
