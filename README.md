@@ -10,6 +10,11 @@ when the manager is unavailable. Enrollment does not install HAProxy or create
 a shared traffic entrypoint; you provide the nodes, application servers and
 networking.
 
+**New to Fleet?** [See the console and operator walkthrough](docs/getting-started.md),
+then [run the local two-node lab](#try-it-from-source) or
+[connect existing HAProxy nodes](docs/existing-haproxy.md). Tell us what blocks
+you in [GitHub Issues](https://github.com/ecraela/fleet/issues/new).
+
 ![Self-hosted console showing node health and traffic in the two-node demo](docs/images/self-hosted-console.jpg)
 
 The self-hosted console, with synthetic traffic from the local two-node demo.
@@ -18,15 +23,16 @@ create an application and inspect its traffic.
 
 ## Status
 
-Fleet is pre-1.0 software under [AGPL-3.0-only](LICENSE), with
+Fleet is a production-ready beta under [AGPL-3.0-only](LICENSE), with
 [optional commercial licensing and paid support](LICENSING.md).
 
-Published previews have passed clean installation, Docker/Linux agent upgrades,
-rollback and encrypted recovery on Ubuntu 24.04 AMD64 and ARM64 hosts. Select an
-exact tag with a matching [published qualification run](https://github.com/ecraela/fleet/actions/workflows/release-qualification.yml).
-RC.25 has a native managed-updater limitation that requires the bridge described
-in the production checklist below. Authenticate the exact release before
-installing; see [release verification](docs/agent-releases.md).
+[RC.28](https://github.com/ecraela/fleet/releases/tag/v0.1.0-rc.28) passed clean
+installation, Docker/Linux agent upgrades, rollback and encrypted recovery on
+Ubuntu 24.04 AMD64 and ARM64 hosts. Use the exact signed release and its
+[published qualification run](https://github.com/ecraela/fleet/actions/runs/45078072100).
+Authenticate the exact release before installing; see
+[release verification](docs/agent-releases.md). Existing RC.25 installations
+should follow the [upgrade bridge](docs/production-readiness.md#rc25-native-updater-bridge).
 
 The tested pilot shape is Ubuntu 24.04 with Docker Engine and Compose; native
 Linux agents are also tested. Small-demo results are not capacity guarantees.
